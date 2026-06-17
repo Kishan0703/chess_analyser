@@ -297,6 +297,16 @@ def get_position_analysis(game_id: int, ply: int):
     }
 
 
+@app.get("/api/games/{game_id}/position/{ply}/explanation")
+def get_position_explanation(game_id: int, ply: int):
+    try:
+        return coach.explain_current_move(game_id, ply)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"coach error: {e}")
+
+
 @app.post("/api/games/{game_id}/chat")
 def chat_about_game(game_id: int, req: ChatRequest):
     try:

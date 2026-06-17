@@ -123,6 +123,15 @@ missing instead of inventing details.
 Keep responses concise but useful: usually 2-5 short paragraphs or a compact bullet list."""
 
 
+MOVE_EXPLANATION_SYSTEM = f"""You are a chess coach explaining ONE move from an analyzed game.
+Speak directly to the student. Explain why the move was good or bad like a real coach.
+
+{_GROUNDING}
+
+Write plain text only, not JSON. Keep it to 2-4 short lines. Start with the positional reason,
+then mention the concrete engine line or best alternative if relevant."""
+
+
 # --- per-moment data block ---------------------------------------------------
 
 def _safe_consequences(board: chess.Board, uci: str | None) -> str:
@@ -453,6 +462,25 @@ def _chat_prompt(game: dict, user_color: str, question: str, ply: int,
     )
 
 
+def _plain_move_explanation(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+    if text.startswith("{") and "}" in text:
+        try:
+            data = json.loads(text[text.find("{"):text.rfind("}") + 1])
+            parts = [_str(data.get("explanation")), _str(data.get("plan"))]
+            text = " ".join(p for p in parts if p).strip() or _str(data.get("title"))
+        except Exception:
+            pass
+    text = re.sub(r'^\s*"?(title|explanation|plan)"?\s*:\s*', "", text, flags=re.I)
+    text = text.replace("\\n", "\n").replace('\\"', '"')
+    lines = [line.strip(" \t,-") for line in text.splitlines() if line.strip()]
+    if not lines:
+        lines = [text.strip()]
+    return "\n".join(lines[:4]).strip()
+
+
 def answer_game_question(game_id: int, question: str, ply: int = 0,
                          history: list[dict] | None = None) -> dict:
     cfg = settings.load()
@@ -480,6 +508,99 @@ def answer_game_question(game_id: int, question: str, ply: int = 0,
         "model": model,
         "input_tokens": in_tok,
         "output_tokens": out_tok,
+    }
+
+
+def _move_explanation_prompt(game: dict, user_color: str, move: dict,
+                             before_fen: str, candidates: list[dict]) -> str:
+    user_name = game["white"] if user_color == "white" else game["black"]
+    user_white = user_color == "white"
+    board = chess.Board(before_fen)
+    mover_color = "white" if move["ply"] % 2 == 1 else "black"
+    actor = "you" if mover_color == user_color else "your opponent"
+    move_no = (move["ply"] + 1) // 2
+    dots = "." if mover_color == "white" else "..."
+    prev_cp = 0 if move["ply"] == 1 else (game["moves"][move["ply"] - 2].get("eval_cp") or 0)
+    before_eval = _persp_eval(prev_cp, None, user_white)
+    after_eval = _persp_eval(move.get("eval_cp"), move.get("eval_mate"), user_white)
+    best_consequences = _safe_consequences(board, move.get("best_uci"))
+    played_consequences = _safe_consequences(board, move.get("uci"))
+    return (
+        f"Student: {user_name}, playing {user_color}. Opening: "
+        f"{game.get('opening') or game.get('eco') or 'unknown'}.\n"
+        f"Move to explain: {move_no}{dots} {move['san']} by {mover_color} ({actor}).\n"
+        f"Engine verdict: {move.get('classification')}. Win probability lost by mover: "
+        f"{move.get('win_pct_loss')}.\n"
+        f"Eval before from student's perspective: {before_eval}. Eval after from student's "
+        f"perspective: {after_eval}.\n"
+        f"Engine preferred before the move: {move.get('best_san') or 'unknown'}; "
+        f"stored best line: {move.get('best_line') or 'unknown'}.\n\n"
+        f"PIECE PLACEMENT before the move (use ONLY these squares):\n"
+        f"{features.piece_placement(board)}\n"
+        f"Position facts before the move:\n{features.describe(board)}\n\n"
+        f"{_candidates_block(candidates, user_white)}\n"
+        f"PLAYED MOVE CONSEQUENCES for {move['san']}:\n{played_consequences}\n\n"
+        f"BEST MOVE CONSEQUENCES for {move.get('best_san') or 'engine move'}:\n"
+        f"{best_consequences or '(not available)'}\n\n"
+        f"Explain this in 2-4 short coach lines. No JSON. No title. If this was a good/best move, "
+        f"say what plan it supports and why the engine likes it. If this was inaccurate, say what "
+        f"the engine move achieved that the played move missed."
+    )
+
+
+def explain_current_move(game_id: int, ply: int) -> dict:
+    cfg = settings.load()
+    with db.connect() as conn:
+        game = db.get_game(conn, game_id, username=cfg.get("chesscom_username"))
+    if game is None:
+        raise ValueError(f"game {game_id} not found")
+    if not game["moves"]:
+        raise ValueError("run engine analysis first")
+    if ply <= 0:
+        return {
+            "title": "Starting position",
+            "explanation": "No move has been played yet. Step to a move to see a coached explanation of its strategic point and engine alternatives.",
+            "plan": "Develop pieces, fight for the center, and keep king safety in mind.",
+            "model": None,
+        }
+    if ply > len(game["moves"]):
+        raise ValueError("position not found — run engine analysis first")
+
+    move = game["moves"][ply - 1]
+    user_color = game.get("user_color") or "white"
+    mover_color = "white" if move["ply"] % 2 == 1 else "black"
+    actor = "Your move" if mover_color == user_color else "Opponent move"
+    classification = move.get("classification") or "move"
+    best_san = move.get("best_san")
+    best_line = move.get("best_line")
+    loss = float(move.get("win_pct_loss") or 0)
+
+    if classification in ("brilliant", "great", "best"):
+        text = (
+            f"{actor} {move['san']} was {classification}: it matched Stockfish's main choice in this position.\n"
+            f"The point is practical: keep following the forcing line {best_line or best_san or move['san']} and do not give the opponent time to improve.\n"
+            "When your move is the engine's first choice, the lesson is to understand the plan it supports, then repeat that pattern in similar positions."
+        )
+    elif classification == "good":
+        text = (
+            f"{actor} {move['san']} was good because it kept the evaluation under control and did not give away meaningful winning chances.\n"
+            f"Stockfish's preferred line was {best_line or best_san or 'not stored'}, so compare your move with that idea to see the most accurate plan.\n"
+            "The practical lesson: this move is playable, but the engine line shows the cleaner way to improve the position."
+        )
+    else:
+        text = (
+            f"{actor} {move['san']} was a {classification} because it gave away about {loss:.1f}% win probability.\n"
+            f"Stockfish preferred {best_san or 'another move'}, with the line {best_line or 'not stored'}, which was the more accurate way to handle the position.\n"
+            "The lesson is to pause before committing: look for the engine move's forcing idea, threat, or defensive resource before choosing the natural-looking move."
+        )
+
+    return {
+        "title": "",
+        "explanation": text,
+        "plan": "",
+        "model": None,
+        "input_tokens": 0,
+        "output_tokens": 0,
     }
 
 

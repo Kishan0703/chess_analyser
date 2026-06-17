@@ -36,9 +36,14 @@ function verdictText(move) {
 export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, onVariation }) {
   const [cache, setCache] = useState({})
   const [errors, setErrors] = useState({})
+  const [explanationCache, setExplanationCache] = useState({})
+  const [explanationErrors, setExplanationErrors] = useState({})
   const requestId = useRef(0)
+  const explanationRequestId = useRef(0)
   const data = cache[ply]
   const error = errors[ply]
+  const explanation = explanationCache[ply]
+  const explanationError = explanationErrors[ply]
 
   useEffect(() => {
     if (!analyzed) return
@@ -56,6 +61,26 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
         setErrors((prev) => ({ ...prev, [ply]: e.message }))
       })
   }, [analyzed, cache, errors, gameId, ply])
+
+  useEffect(() => {
+    if (!analyzed) return
+    if (explanationCache[ply]) return
+    if (explanationErrors[ply]) return
+
+    const id = ++explanationRequestId.current
+    const timer = setTimeout(() => {
+      api.positionExplanation(gameId, ply)
+      .then((result) => {
+        if (explanationRequestId.current !== id) return
+        setExplanationCache((prev) => ({ ...prev, [ply]: result }))
+      })
+      .catch((e) => {
+        if (explanationRequestId.current !== id) return
+        setExplanationErrors((prev) => ({ ...prev, [ply]: e.message }))
+      })
+    }, 180)
+    return () => clearTimeout(timer)
+  }, [analyzed, explanationCache, explanationErrors, gameId, ply])
 
   const verdictClass = currentMove?.classification || 'neutral'
   const bestLineSans = useMemo(
@@ -81,7 +106,23 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
         </span>
       </div>
 
-      <p className="position-verdict-text">{verdictText(currentMove)}</p>
+      <div className="coach-insight">
+        {explanation ? (
+          <>
+            <p>{explanation.explanation || verdictText(currentMove)}</p>
+            {explanation.plan && <p className="coach-plan">{explanation.plan}</p>}
+          </>
+        ) : (
+          <>
+            {!explanationError && <div className="status-line">Preparing explanation...</div>}
+          </>
+        )}
+        {explanationError && (
+          <div className="status-line">
+            Coach explanation unavailable: {explanationError}
+          </div>
+        )}
+      </div>
 
       {canReplayBest && (
         <button

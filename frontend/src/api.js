@@ -25,6 +25,7 @@ export const api = {
   coachStatus: (id) => request(`/api/games/${id}/coach/status`),
   bestLine: (id, ply) => request(`/api/games/${id}/bestline/${ply}`),
   positionAnalysis: (id, ply) => request(`/api/games/${id}/position/${ply}`),
+  positionExplanation: (id, ply) => request(`/api/games/${id}/position/${ply}/explanation`),
   chat: (id, question, ply, history) =>
     request(`/api/games/${id}/chat`, {
       method: 'POST',
