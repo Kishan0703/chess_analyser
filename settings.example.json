@@ -1,0 +1,14 @@
+{
+  "anthropic_api_key": "",
+  "gemini_api_key": "",
+  "chesscom_username": "",
+  "claude_model": "claude-sonnet-4-6",
+  "gemini_model": "gemini-2.5-flash-lite",
+  "gemini_fallback_models": "gemini-3.5-flash,gemini-3.1-flash-lite,gemini-2.5-flash",
+  "engine_movetime_ms": 150,
+  "engine_multipv": 3,
+  "engine_threads": 4,
+  "coach_provider": "ollama",
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "qwen2.5:14b"
+}
