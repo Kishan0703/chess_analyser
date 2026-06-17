@@ -24,4 +24,10 @@ export const api = {
   coach: (id) => request(`/api/games/${id}/coach`, { method: 'POST' }),
   coachStatus: (id) => request(`/api/games/${id}/coach/status`),
   bestLine: (id, ply) => request(`/api/games/${id}/bestline/${ply}`),
+  positionAnalysis: (id, ply) => request(`/api/games/${id}/position/${ply}`),
+  chat: (id, question, ply, history) =>
+    request(`/api/games/${id}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ question, ply, history }),
+    }),
 }

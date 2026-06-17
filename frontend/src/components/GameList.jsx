@@ -39,7 +39,10 @@ export default function GameList({ onOpen }) {
     try {
       await api.saveSettings({ chesscom_username: username })
       const r = await api.importGames(username, months)
-      setStatus(`Imported ${r.imported} new games (${r.skipped} already known) from ${r.archives} month(s).`)
+      const partial = r.failed_archives
+        ? ` ${r.failed_archives} archive month(s) were temporarily unavailable.`
+        : ''
+      setStatus(`Imported ${r.imported} new games (${r.skipped} already known) from ${r.archives} month(s).${partial}`)
       refresh()
       refreshOb()
     } catch (e) {
@@ -78,7 +81,10 @@ export default function GameList({ onOpen }) {
       {showOnboarding && <Onboarding data={ob} onDismiss={() => setDismissed(true)} />}
 
       <div className="page-head">
-        <h2>Your games</h2>
+        <div>
+          <p className="eyebrow">Chess.com archive</p>
+          <h2>Your games</h2>
+        </div>
         {stats.total > 0 && (
           <div className="stats-strip">
             <div className="stat-card">
@@ -107,73 +113,86 @@ export default function GameList({ onOpen }) {
         )}
       </div>
 
-      <div className="import-bar">
-        <input
-          placeholder="chess.com username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <select
-          value={months}
-          onChange={(e) => setMonths(Number(e.target.value))}
-          title="How far back to pull from your chess.com archive"
-        >
-          <option value={1}>last month</option>
-          <option value={3}>last 3 months</option>
-          <option value={6}>last 6 months</option>
-          <option value={12}>last 12 months</option>
-        </select>
-        <button className="primary" onClick={doImport} disabled={busy || !username}>
-          {busy ? 'Importing…' : 'Import games'}
-        </button>
-        <span className="status-line">{status}</span>
+      <div className="import-panel">
+        <div className="import-copy">
+          <span className="import-icon">♟</span>
+          <div>
+            <h3>Load fresh games</h3>
+            <p>Pull recent games, then open any row for engine analysis and coaching.</p>
+          </div>
+        </div>
+        <div className="import-controls">
+          <input
+            placeholder="chess.com username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <select
+            value={months}
+            onChange={(e) => setMonths(Number(e.target.value))}
+            title="How far back to pull from your chess.com archive"
+          >
+            <option value={1}>last month</option>
+            <option value={3}>last 3 months</option>
+            <option value={6}>last 6 months</option>
+            <option value={12}>last 12 months</option>
+          </select>
+          <button className="primary" onClick={doImport} disabled={busy || !username}>
+            {busy ? 'Importing…' : 'Import games'}
+          </button>
+        </div>
+        <span className={`status-line import-status ${status.startsWith('Import failed') ? 'error' : ''}`}>
+          {status || 'Ready when your username is set.'}
+        </span>
       </div>
 
-      <table className="game-table">
-        <thead>
-          <tr>
-            <th>Date</th><th>White</th><th>Black</th><th>Result</th>
-            <th>Opening</th><th>Time</th>
-            <th>
-              Analysis{' '}
-              <InfoTip side="left">
-                <strong>—</strong> not analyzed yet · <strong>engine</strong> = Stockfish
-                evals &amp; move grades done · <strong>coached</strong> = positional report ready.
-              </InfoTip>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {loading && Array.from({ length: 6 }).map((_, i) => (
-            <tr key={`sk${i}`} className="sk-tr">
-              <td colSpan={7}><div className="skeleton sk-row" /></td>
+      <div className="game-table-wrap">
+        <table className="game-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>White</th><th>Black</th><th>Result</th>
+              <th>Opening</th><th>Time</th>
+              <th>
+                Analysis{' '}
+                <InfoTip side="left">
+                  <strong>—</strong> not analyzed yet · <strong>engine</strong> = Stockfish
+                  evals &amp; move grades done · <strong>coached</strong> = positional report ready.
+                </InfoTip>
+              </th>
             </tr>
-          ))}
-          {!loading && games.map((g) => {
-            const o = outcome(g)
-            const youWhite = g.user_color === 'white'
-            const youBlack = g.user_color === 'black'
-            return (
-              <tr key={g.id} className="row" onClick={() => onOpen(g.id)}>
-                <td>{(g.played_at || '').slice(0, 10)}</td>
-                <td className={youWhite ? 'you-name' : ''}>{g.white} {g.white_elo ? `(${g.white_elo})` : ''}</td>
-                <td className={youBlack ? 'you-name' : ''}>{g.black} {g.black_elo ? `(${g.black_elo})` : ''}</td>
-                <td><span className={`result-chip ${o}`}>{resultLabel(g)}</span></td>
-                <td>{(g.opening || g.eco || '').slice(0, 40)}</td>
-                <td>{g.time_control}</td>
-                <td>
-                  {g.coached ? <span className="pill done">coached</span>
-                    : g.engine_analyzed ? <span className="pill done">engine</span>
-                    : <span className="pill">—</span>}
-                </td>
+          </thead>
+          <tbody>
+            {loading && Array.from({ length: 6 }).map((_, i) => (
+              <tr key={`sk${i}`} className="sk-tr">
+                <td colSpan={7}><div className="skeleton sk-row" /></td>
               </tr>
-            )
-          })}
-          {!loading && games.length === 0 && (
-            <tr><td colSpan={7} className="status-line">No games yet — import your chess.com archive above.</td></tr>
-          )}
-        </tbody>
-      </table>
+            ))}
+            {!loading && games.map((g) => {
+              const o = outcome(g)
+              const youWhite = g.user_color === 'white'
+              const youBlack = g.user_color === 'black'
+              return (
+                <tr key={g.id} className="row" onClick={() => onOpen(g.id)}>
+                  <td>{(g.played_at || '').slice(0, 10)}</td>
+                  <td className={youWhite ? 'you-name' : ''}>{g.white} {g.white_elo ? `(${g.white_elo})` : ''}</td>
+                  <td className={youBlack ? 'you-name' : ''}>{g.black} {g.black_elo ? `(${g.black_elo})` : ''}</td>
+                  <td><span className={`result-chip ${o}`}>{resultLabel(g)}</span></td>
+                  <td>{(g.opening || g.eco || '').slice(0, 40)}</td>
+                  <td>{g.time_control}</td>
+                  <td>
+                    {g.coached ? <span className="pill done">coached</span>
+                      : g.engine_analyzed ? <span className="pill done">engine</span>
+                      : <span className="pill">—</span>}
+                  </td>
+                </tr>
+              )
+            })}
+            {!loading && games.length === 0 && (
+              <tr><td colSpan={7} className="status-line empty-state">No games yet. Import your chess.com archive above.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

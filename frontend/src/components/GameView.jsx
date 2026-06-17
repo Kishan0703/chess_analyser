@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
 import { api } from '../api.js'
@@ -6,6 +6,8 @@ import EvalGraph from './EvalGraph.jsx'
 import MoveList from './MoveList.jsx'
 import CoachPanel from './CoachPanel.jsx'
 import InfoTip from './InfoTip.jsx'
+import PositionAnalysis from './PositionAnalysis.jsx'
+import GameChat from './GameChat.jsx'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -33,7 +35,7 @@ export default function GameView({ gameId }) {
   const pollRef = useRef(null)
   const coachPollRef = useRef(null)
   const boardRef = useRef(null)
-  const [boardPx, setBoardPx] = useState(560)
+  const [boardPx, setBoardPx] = useState(0)
 
   // measure the board container so the board fills it exactly (fixes row-gap rendering bug)
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function GameView({ gameId }) {
     clearInterval(coachPollRef.current)
   }, [])
 
-  const moves = game?.moves ?? []
+  const moves = useMemo(() => game?.moves ?? [], [game])
   const maxPly = moves.length
 
   // keyboard navigation — arrow keys step through variation or game
@@ -84,7 +86,7 @@ export default function GameView({ gameId }) {
   // then let the user step through it. Falls back to stored best_line on error.
   const enterVariation = useCallback(async ({ ply, baseFen, bestLineSans, playedUci, playedSan, momentType }) => {
     setVariationLoading(true)
-    let fen = baseFen
+    let fen = baseFen || (ply <= 1 ? START_FEN : moves[ply - 2]?.fen_after) || START_FEN
     let sans = bestLineSans || []
     try {
       const result = await api.bestLine(gameId, ply)
@@ -119,7 +121,7 @@ export default function GameView({ gameId }) {
         momentType: momentType || 'negative',
       })
     }
-  }, [gameId])
+  }, [gameId, moves])
 
   const startAnalysis = async () => {
     setError('')
@@ -223,7 +225,7 @@ export default function GameView({ gameId }) {
 
   // move-quality badge on the to-square of the move just played (not in variation)
   let badge = null
-  if (!variation && analyzed && currentMove?.uci && MOVE_GLYPH[currentMove.classification]) {
+  if (!variation && analyzed && boardPx > 0 && currentMove?.uci && MOVE_GLYPH[currentMove.classification]) {
     const sq = boardPx / 8
     const f = currentMove.uci.charCodeAt(2) - 97   // 'a'..'h' -> 0..7
     const r = currentMove.uci.charCodeAt(3) - 49   // '1'..'8' -> 0..7
@@ -264,29 +266,31 @@ export default function GameView({ gameId }) {
             <button onClick={() => setVariation(null)}>✕ Exit</button>
           </div>
         )}
-        <div ref={boardRef} style={{ width: '100%', aspectRatio: '1', position: 'relative' }}>
-          <Chessboard
-            options={{
-              position: fen,
-              boardOrientation: orientation,
-              allowDragging: false,
-              arrows,
-              boardStyle: { width: boardPx + 'px', height: boardPx + 'px' },
-              id: 'main-board',
-            }}
-          />
-          {badge && (
-            <div
-              className={`move-badge ${badge.cls}`}
-              style={{
-                left: badge.left, top: badge.top,
-                width: badge.size, height: badge.size,
-                fontSize: badge.size * 0.5,
+        <div className="board-shell">
+          <div ref={boardRef} className="board-stage">
+            <Chessboard
+              options={{
+                position: fen,
+                boardOrientation: orientation,
+                allowDragging: false,
+                arrows,
+                boardStyle: { width: '100%', height: '100%' },
+                id: 'main-board',
               }}
-            >
-              {badge.glyph}
-            </div>
-          )}
+            />
+            {badge && (
+              <div
+                className={`move-badge ${badge.cls}`}
+                style={{
+                  left: badge.left, top: badge.top,
+                  width: badge.size, height: badge.size,
+                  fontSize: badge.size * 0.5,
+                }}
+              >
+                {badge.glyph}
+              </div>
+            )}
+          </div>
         </div>
         <div className="board-nav">
           {variation ? (
@@ -325,7 +329,7 @@ export default function GameView({ gameId }) {
           <div className="status-line">
             {game.opening || game.eco} · {game.time_control} · {(game.played_at || '').slice(0, 10)}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+          <div className="action-row">
             <button
               className="primary" onClick={startAnalysis} disabled={engineRunning}
               title="Runs Stockfish on every move: the eval graph and move grades (★ best … ?? blunder). Takes ~10–30s. Required before coaching."
@@ -359,6 +363,26 @@ export default function GameView({ gameId }) {
           )}
           {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
         </div>
+
+        {analyzed && (
+          <PositionAnalysis
+            gameId={gameId}
+            ply={ply}
+            analyzed={analyzed}
+            currentMove={currentMove}
+            onVariation={enterVariation}
+          />
+        )}
+
+        {analyzed && (
+          <GameChat
+            key={gameId}
+            gameId={gameId}
+            ply={ply}
+            analyzed={analyzed}
+            currentMove={currentMove}
+          />
+        )}
 
         {analyzed && (
           <div className="card">
