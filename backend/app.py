@@ -6,7 +6,7 @@ import chess
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import chesscom, coach, db, engine, settings
 
@@ -22,6 +22,17 @@ _coach_jobs: dict[int, dict] = {}
 class ImportRequest(BaseModel):
     username: str | None = None
     months: int = 3
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    question: str
+    ply: int = 0
+    history: list[ChatMessage] = Field(default_factory=list)
 
 
 class SettingsUpdate(BaseModel):
@@ -65,6 +76,8 @@ def import_games(req: ImportRequest):
         raise HTTPException(400, "No chess.com username configured")
     try:
         return chesscom.import_games(username, months=req.months)
+    except chesscom.ChessComImportError as e:
+        raise HTTPException(e.status_code, str(e))
     except Exception as e:  # surface chess.com errors readably
         raise HTTPException(502, f"chess.com import failed: {e}")
 
@@ -229,6 +242,74 @@ def get_deep_bestline(game_id: int, ply: int):
         raise HTTPException(500, f"engine error: {e}")
 
     return {"fen": fen, "sans": sans}
+
+
+@app.get("/api/games/{game_id}/position/{ply}")
+def get_position_analysis(game_id: int, ply: int):
+    """Return top engine candidates for the position currently shown at `ply`."""
+    if ply < 0:
+        raise HTTPException(400, "ply must be non-negative")
+
+    with db.connect() as conn:
+        game_row = conn.execute("SELECT id FROM games WHERE id = ?", (game_id,)).fetchone()
+        if game_row is None:
+            raise HTTPException(404, "game not found")
+
+        if ply == 0:
+            fen = chess.STARTING_FEN
+        else:
+            row = conn.execute(
+                "SELECT fen_after FROM moves WHERE game_id = ? AND ply = ?",
+                (game_id, ply)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(404, "position not found — run engine analysis first")
+            fen = row["fen_after"]
+
+    board = chess.Board(fen)
+    cfg = settings.load()
+    try:
+        candidates = engine.batch_candidates(
+            [fen],
+            multipv=cfg.get("engine_multipv", 3),
+            movetime_ms=cfg.get("engine_movetime_ms", 150),
+        ).get(fen, [])
+    except Exception as e:
+        raise HTTPException(500, f"engine error: {e}")
+
+    for cand in candidates:
+        cp = cand.get("eval_cp")
+        if cp is None:
+            cand["white_win_pct"] = None
+            cand["side_to_move_win_pct"] = None
+            continue
+        white_wp = engine.win_pct(cp)
+        cand["white_win_pct"] = round(white_wp, 1)
+        cand["side_to_move_win_pct"] = round(
+            white_wp if board.turn == chess.WHITE else 100 - white_wp, 1
+        )
+
+    return {
+        "fen": fen,
+        "ply": ply,
+        "side_to_move": "white" if board.turn == chess.WHITE else "black",
+        "candidates": candidates,
+    }
+
+
+@app.post("/api/games/{game_id}/chat")
+def chat_about_game(game_id: int, req: ChatRequest):
+    try:
+        return coach.answer_game_question(
+            game_id,
+            req.question,
+            ply=req.ply,
+            history=[m.model_dump() for m in req.history],
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"coach error: {e}")
 
 
 # Serve the built frontend (must be mounted last so /api wins)

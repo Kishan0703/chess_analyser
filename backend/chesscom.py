@@ -1,5 +1,6 @@
 """Import games from the chess.com public API (free, no auth required)."""
 import io
+import time
 
 import chess.pgn
 import httpx
@@ -9,13 +10,71 @@ from . import db
 API = "https://api.chess.com/pub"
 # chess.com requires a descriptive User-Agent or it 403s
 HEADERS = {"User-Agent": "ChessCoach personal analysis app (contact: levi.allen251@gmail.com)"}
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+class ChessComImportError(RuntimeError):
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _message_from_response(r: httpx.Response, username: str | None = None) -> str:
+    try:
+        payload = r.json()
+        detail = payload.get("message") or payload.get("detail")
+    except ValueError:
+        detail = r.text.strip()[:180]
+
+    if r.status_code == 404:
+        who = f' "{username}"' if username else ""
+        return f"Chess.com user{who} was not found. Check the username spelling."
+    if r.status_code == 429:
+        return "Chess.com is rate limiting imports right now. Wait a minute and try again."
+    if r.status_code in {500, 502, 503, 504}:
+        return "Chess.com is temporarily unavailable. Try importing again in a few minutes."
+    return detail or f"Chess.com returned HTTP {r.status_code}."
+
+
+def _get_json(url: str, *, timeout: int, username: str | None = None, retries: int = 2) -> dict:
+    last_response = None
+    for attempt in range(retries + 1):
+        try:
+            r = httpx.get(url, headers=HEADERS, timeout=timeout, follow_redirects=True)
+        except httpx.RequestError as e:
+            if attempt < retries:
+                time.sleep(0.7 * (attempt + 1))
+                continue
+            raise ChessComImportError(f"Could not reach Chess.com: {e}", 503) from e
+
+        if r.status_code < 400:
+            return r.json()
+
+        last_response = r
+        if r.status_code in RETRY_STATUSES and attempt < retries:
+            retry_after = r.headers.get("Retry-After")
+            try:
+                delay = min(float(retry_after), 5.0) if retry_after else 0.7 * (attempt + 1)
+            except ValueError:
+                delay = 0.7 * (attempt + 1)
+            time.sleep(delay)
+            continue
+        break
+
+    assert last_response is not None
+    raise ChessComImportError(
+        _message_from_response(last_response, username=username),
+        503 if last_response.status_code in RETRY_STATUSES else last_response.status_code,
+    )
 
 
 def fetch_archives(username: str) -> list[str]:
     """Return the list of monthly archive URLs, oldest first."""
-    r = httpx.get(f"{API}/player/{username}/games/archives", headers=HEADERS, timeout=30)
-    r.raise_for_status()
-    return r.json()["archives"]
+    return _get_json(
+        f"{API}/player/{username}/games/archives",
+        timeout=30,
+        username=username,
+    )["archives"]
 
 
 def import_games(username: str, months: int = 3) -> dict:
@@ -23,11 +82,17 @@ def import_games(username: str, months: int = 3) -> dict:
     username = username.strip().lower()
     archives = fetch_archives(username)[-months:]
     imported = skipped = 0
+    failed_archives = []
     with db.connect() as conn:
         for url in archives:
-            r = httpx.get(url, headers=HEADERS, timeout=60)
-            r.raise_for_status()
-            for g in r.json().get("games", []):
+            try:
+                data = _get_json(url, timeout=60, username=username)
+            except ChessComImportError as e:
+                if e.status_code in {429, 500, 502, 503, 504}:
+                    failed_archives.append(url)
+                    continue
+                raise
+            for g in data.get("games", []):
                 pgn_text = g.get("pgn")
                 if not pgn_text or g.get("rules") != "chess":  # skip variants
                     continue
@@ -37,7 +102,17 @@ def import_games(username: str, months: int = 3) -> dict:
                 else:
                     skipped += 1
         conn.commit()
-    return {"imported": imported, "skipped": skipped, "archives": len(archives)}
+    if failed_archives and len(failed_archives) == len(archives):
+        raise ChessComImportError(
+            "Chess.com is temporarily unavailable for the selected archive months. Try again in a few minutes.",
+            503,
+        )
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "archives": len(archives),
+        "failed_archives": len(failed_archives),
+    }
 
 
 def _parse_game(pgn_text: str, raw: dict, username: str) -> dict | None:

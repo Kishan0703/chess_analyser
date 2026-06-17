@@ -110,6 +110,19 @@ Respond with a SINGLE JSON object using EXACTLY these keys:
 Use only the allowed theme slugs listed in the user message."""
 
 
+CHAT_SYSTEM = f"""You are a chess coach answering follow-up questions about one analyzed game.
+Speak directly to the student. Give practical, high-signal answers.
+
+{_GROUNDING}
+
+Use the current position, move verdict, engine candidates, and game context supplied by the app.
+If the question asks for a best move, plan, mistake, tactic, or probability, answer from the given
+engine data first and then explain the human reason. If the data is insufficient, say what is
+missing instead of inventing details.
+
+Keep responses concise but useful: usually 2-5 short paragraphs or a compact bullet list."""
+
+
 # --- per-moment data block ---------------------------------------------------
 
 def _safe_consequences(board: chess.Board, uci: str | None) -> str:
@@ -221,7 +234,8 @@ def _summary_user_prompt(game: dict, user_color: str, moments_out: list[dict],
 
 # --- LLM backends ------------------------------------------------------------
 
-def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800
+def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
+                 json_mode: bool = True
                  ) -> tuple[str, str, int, int]:
     """Returns (text, model, input_tokens, output_tokens). Raises on error."""
     base = cfg["ollama_url"].rstrip("/")
@@ -233,7 +247,6 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800
             {"role": "user", "content": prompt},
         ],
         "stream": False,
-        "format": "json",
         "options": {
             "temperature": 0.3,
             "num_predict": num_predict,
@@ -242,6 +255,8 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800
             "num_ctx": 16384,
         },
     }
+    if json_mode:
+        payload["format"] = "json"
     try:
         r = httpx.post(f"{base}/api/chat", json=payload, timeout=300)
         r.raise_for_status()
@@ -271,7 +286,8 @@ def _call_claude(prompt: str, cfg: dict, system: str, max_tokens: int = 1800
     return resp.content[0].text, model, resp.usage.input_tokens, resp.usage.output_tokens
 
 
-def _call_gemini(prompt: str, cfg: dict, system: str, max_tokens: int = 1800
+def _call_gemini(prompt: str, cfg: dict, system: str, max_tokens: int = 1800,
+                 json_mode: bool = True
                  ) -> tuple[str, str, int, int]:
     """Returns (text, model, input_tokens, output_tokens). Uses Gemini REST API."""
     api_key = cfg.get("gemini_api_key")
@@ -291,7 +307,7 @@ def _call_gemini(prompt: str, cfg: dict, system: str, max_tokens: int = 1800
     for model in models:
         try:
             return _call_gemini_model(prompt, api_key, model, system, max_tokens,
-                                      retry_statuses, fallback_statuses)
+                                      retry_statuses, fallback_statuses, json_mode)
         except _GeminiTransientError as e:
             errors.append(str(e))
             continue
@@ -306,7 +322,7 @@ class _GeminiTransientError(Exception):
 
 def _call_gemini_model(prompt: str, api_key: str, model: str, system: str,
                        max_tokens: int, retry_statuses: set[int],
-                       fallback_statuses: set[int]
+                       fallback_statuses: set[int], json_mode: bool = True
                        ) -> tuple[str, str, int, int]:
     model_path = model if model.startswith(("models/", "tunedModels/")) else f"models/{model}"
     payload = {
@@ -322,9 +338,10 @@ def _call_gemini_model(prompt: str, api_key: str, model: str, system: str,
         "generationConfig": {
             "temperature": 0.3,
             "maxOutputTokens": max_tokens,
-            "responseMimeType": "application/json",
         },
     }
+    if json_mode:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
     url = f"https://generativelanguage.googleapis.com/v1beta/{quote(model_path, safe='/')}:generateContent"
     for attempt in range(3):
         try:
@@ -371,6 +388,101 @@ def _call_gemini_model(prompt: str, api_key: str, model: str, system: str,
     return text, model, usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0)
 
 
+def _call_provider(prompt: str, cfg: dict, system: str, budget: int,
+                   json_mode: bool = True) -> tuple[str, str, int, int]:
+    provider = cfg.get("coach_provider", "ollama")
+    if provider == "claude":
+        return _call_claude(prompt, cfg, system, max_tokens=budget)
+    if provider == "gemini":
+        return _call_gemini(prompt, cfg, system, max_tokens=budget, json_mode=json_mode)
+    return _call_ollama(prompt, cfg, system, num_predict=budget, json_mode=json_mode)
+
+
+def _chat_prompt(game: dict, user_color: str, question: str, ply: int,
+                 history: list[dict] | None, candidates: list[dict]) -> str:
+    user_name = game["white"] if user_color == "white" else game["black"]
+    user_white = user_color == "white"
+    fen_by_ply = {m["ply"]: m["fen_after"] for m in game["moves"]}
+    move_by_ply = {m["ply"]: m for m in game["moves"]}
+    ply = max(0, min(ply, len(game["moves"])))
+    fen = chess.STARTING_FEN if ply == 0 else fen_by_ply[ply]
+    board = chess.Board(fen)
+    current = move_by_ply.get(ply)
+    previous = ""
+    if current:
+        previous = (
+            f"Move just played: ply {current['ply']} {current['san']} "
+            f"({current.get('classification') or 'unclassified'}). "
+            f"Eval after move from student's perspective: "
+            f"{_persp_eval(current.get('eval_cp'), current.get('eval_mate'), user_white)}. "
+            f"Win probability lost by this move: {current.get('win_pct_loss')}. "
+            f"Engine preferred before this move: {current.get('best_san') or 'unknown'}; "
+            f"line: {current.get('best_line') or 'unknown'}."
+        )
+    else:
+        previous = "Current board is the starting position before any move."
+
+    recent = []
+    for item in (history or [])[-6:]:
+        role = "Student" if item.get("role") == "user" else "Coach"
+        content = _str(item.get("content", "")).strip()
+        if content:
+            recent.append(f"{role}: {content[:900]}")
+    history_block = "\n".join(recent) or "(no previous chat in this session)"
+    coach_report = game.get("coach") or {}
+    coach_summary = coach_report.get("opening_summary") or ""
+    takeaways = "; ".join(_str(t) for t in coach_report.get("takeaways", [])[:4])
+
+    movetext = str(chess.pgn.read_game(io.StringIO(game["pgn"])).mainline_moves())
+    return (
+        f"Student: {user_name}, playing {user_color}. Result: {game.get('result')}. "
+        f"Opening: {game.get('opening') or game.get('eco') or 'unknown'}. "
+        f"Question is about ply {ply}; side to move now is {'White' if board.turn else 'Black'}.\n\n"
+        f"Current FEN: {fen}\n"
+        f"PIECE PLACEMENT in current position (use ONLY these squares):\n"
+        f"{features.piece_placement(board)}\n"
+        f"Position facts:\n{features.describe(board)}\n\n"
+        f"{previous}\n\n"
+        f"{_candidates_block(candidates, user_white)}\n"
+        f"Existing coach summary: {coach_summary or '(none generated yet)'}\n"
+        f"Existing takeaways: {takeaways or '(none generated yet)'}\n\n"
+        f"Recent chat:\n{history_block}\n\n"
+        f"Full game movetext:\n{movetext}\n\n"
+        f"Student question: {question}\n"
+        f"Answer accurately from the supplied data."
+    )
+
+
+def answer_game_question(game_id: int, question: str, ply: int = 0,
+                         history: list[dict] | None = None) -> dict:
+    cfg = settings.load()
+    with db.connect() as conn:
+        game = db.get_game(conn, game_id, username=cfg.get("chesscom_username"))
+    if game is None:
+        raise ValueError(f"game {game_id} not found")
+    if not game["moves"]:
+        raise ValueError("run engine analysis first")
+    if not question.strip():
+        raise ValueError("question is required")
+
+    ply = max(0, min(ply, len(game["moves"])))
+    fen = chess.STARTING_FEN if ply == 0 else game["moves"][ply - 1]["fen_after"]
+    candidates = engine.batch_candidates(
+        [fen],
+        multipv=cfg.get("engine_multipv", 3),
+        movetime_ms=cfg.get("engine_movetime_ms", 150),
+    ).get(fen, [])
+    user_color = game.get("user_color") or "white"
+    prompt = _chat_prompt(game, user_color, question.strip(), ply, history, candidates)
+    text, model, in_tok, out_tok = _call_provider(prompt, cfg, CHAT_SYSTEM, 1200, json_mode=False)
+    return {
+        "answer": text.strip(),
+        "model": model,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+    }
+
+
 # --- orchestration -----------------------------------------------------------
 
 def coach_game(game_id: int, progress: dict | None = None) -> dict:
@@ -398,16 +510,11 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
     if progress is not None:
         progress["done"] = 1
 
-    provider = cfg.get("coach_provider", "ollama")
-
     def call(prompt: str, system: str, budget: int) -> tuple[str, str, int, int]:
-        if provider == "claude":
-            return _call_claude(prompt, cfg, system, max_tokens=budget)
-        if provider == "gemini":
-            return _call_gemini(prompt, cfg, system, max_tokens=budget)
-        return _call_ollama(prompt, cfg, system, num_predict=budget)
+        return _call_provider(prompt, cfg, system, budget)
 
     in_tok = out_tok = 0
+    provider = cfg.get("coach_provider", "ollama")
     model = {
         "claude": cfg.get("claude_model"),
         "gemini": cfg.get("gemini_model"),
