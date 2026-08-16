@@ -32,3 +32,44 @@ def test_resolve_engine_path_rejects_missing_binary(tmp_path):
         engine.resolve_engine_path({"stockfish_path": str(missing)})
 
     assert "Stockfish binary not found" in str(exc.value)
+
+
+def test_onboarding_reports_stockfish_readiness(monkeypatch):
+    from backend import app as app_module
+
+    cfg = {
+        "coach_provider": "claude",
+        "stockfish_path": "engines/stockfish.exe",
+        "chesscom_username": "",
+        "anthropic_api_key": "key",
+        "gemini_api_key": "",
+    }
+
+    class Row:
+        def __getitem__(self, key):
+            assert key == "c"
+            return 0
+
+    class Conn:
+        def execute(self, *args):
+            return self
+
+        def fetchone(self):
+            return Row()
+
+    class ConnCtx:
+        def __enter__(self):
+            return Conn()
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app_module.settings, "load", lambda: cfg)
+    monkeypatch.setattr(app_module.db, "connect", lambda: ConnCtx())
+    monkeypatch.setattr(app_module.engine, "resolve_engine_path", lambda _: Path("/tmp/stockfish"))
+
+    result = app_module.onboarding()
+
+    assert result["stockfish_path"] == "engines/stockfish.exe"
+    assert result["stockfish_found"] is True
+    assert result["stockfish_error"] == ""

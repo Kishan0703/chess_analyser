@@ -45,6 +45,7 @@ class SettingsUpdate(BaseModel):
     engine_movetime_ms: int | None = None
     engine_multipv: int | None = None
     engine_threads: int | None = None
+    stockfish_path: str | None = None
     # Coach provider settings — without these declared, Pydantic silently drops
     # them from the request and the Ollama model selection never reaches save().
     coach_provider: str | None = None
@@ -118,7 +119,15 @@ def onboarding():
         "ollama_model_present": False,
         "claude_key_set": bool(cfg.get("anthropic_api_key")),
         "gemini_key_set": bool(cfg.get("gemini_api_key")),
+        "stockfish_path": cfg.get("stockfish_path") or "",
+        "stockfish_found": False,
+        "stockfish_error": "",
     }
+    try:
+        engine.resolve_engine_path(cfg)
+        out["stockfish_found"] = True
+    except Exception as e:
+        out["stockfish_error"] = str(e)
     if provider == "ollama":
         try:
             base = cfg["ollama_url"].rstrip("/")

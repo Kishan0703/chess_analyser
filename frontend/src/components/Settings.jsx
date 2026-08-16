@@ -27,6 +27,7 @@ export default function Settings() {
         gemini_model: cfg.gemini_model,
         engine_movetime_ms: Number(cfg.engine_movetime_ms),
         engine_threads: Number(cfg.engine_threads),
+        stockfish_path: cfg.stockfish_path,
       }
       if (anthropicApiKey) updates.anthropic_api_key = anthropicApiKey
       if (geminiApiKey) updates.gemini_api_key = geminiApiKey
@@ -161,6 +162,14 @@ export default function Settings() {
           type="number" min="1" max="16"
           value={cfg.engine_threads}
           onChange={(e) => setCfg({ ...cfg, engine_threads: e.target.value })}
+        />
+      </label>
+      <label>
+        Stockfish path
+        <input
+          value={cfg.stockfish_path || ''}
+          onChange={(e) => setCfg({ ...cfg, stockfish_path: e.target.value })}
+          placeholder="engines/stockfish.exe"
         />
       </label>
 
