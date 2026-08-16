@@ -141,6 +141,13 @@ def games(limit: int = 200):
         return db.list_games(conn, limit, username=username)
 
 
+@app.get("/api/profile")
+def profile():
+    username = settings.load().get("chesscom_username")
+    with db.connect() as conn:
+        return db.get_profile(conn, username=username)
+
+
 @app.get("/api/games/{game_id}")
 def game(game_id: int):
     username = settings.load().get("chesscom_username")

@@ -4,7 +4,7 @@ from backend import db
 
 
 def make_conn():
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(db.SCHEMA)
@@ -64,3 +64,29 @@ def test_profile_counts_user_results_move_quality_themes_and_openings():
     assert profile["openings"][0]["losses"] == 1
     assert profile["recent"][0]["game_id"] == 2
     assert profile["recent"][0]["opponent"] == "rival2"
+
+
+def test_profile_endpoint_uses_configured_username(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    conn = make_conn()
+    insert_game(conn, 1, "kishan", "rival", "1-0", "Italian Game", "2026-01-01 12:00:00", "white")
+    insert_move(conn, 1, 1, "best", 0)
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self):
+            return conn
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app_module.settings, "load", lambda: {"chesscom_username": "kishan"})
+    monkeypatch.setattr(app_module.db, "connect", lambda: ConnCtx())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/profile")
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["games"] == 1
