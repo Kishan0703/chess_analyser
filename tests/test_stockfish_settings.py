@@ -1,3 +1,5 @@
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -5,9 +7,14 @@ import pytest
 from backend import engine, settings
 
 
+def make_executable(path):
+    path.write_text("fake", encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
 def test_resolve_engine_path_uses_configured_absolute_path(tmp_path):
     stockfish = tmp_path / "stockfish"
-    stockfish.write_text("fake", encoding="utf-8")
+    make_executable(stockfish)
 
     resolved = engine.resolve_engine_path({"stockfish_path": str(stockfish)})
 
@@ -17,7 +24,7 @@ def test_resolve_engine_path_uses_configured_absolute_path(tmp_path):
 def test_resolve_engine_path_uses_project_relative_path(tmp_path, monkeypatch):
     stockfish = tmp_path / "engines" / "stockfish"
     stockfish.parent.mkdir()
-    stockfish.write_text("fake", encoding="utf-8")
+    make_executable(stockfish)
     monkeypatch.setattr(settings, "ROOT", tmp_path)
 
     resolved = engine.resolve_engine_path({"stockfish_path": "engines/stockfish"})
@@ -32,6 +39,24 @@ def test_resolve_engine_path_rejects_missing_binary(tmp_path):
         engine.resolve_engine_path({"stockfish_path": str(missing)})
 
     assert "Stockfish binary not found" in str(exc.value)
+
+
+def test_resolve_engine_path_rejects_a_directory(tmp_path):
+    directory = tmp_path / "stockfish"
+    directory.mkdir()
+
+    with pytest.raises(FileNotFoundError, match="not a regular file"):
+        engine.resolve_engine_path({"stockfish_path": str(directory)})
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not use POSIX executable bits")
+def test_resolve_engine_path_rejects_a_non_executable_file(tmp_path):
+    stockfish = tmp_path / "stockfish"
+    stockfish.write_text("fake", encoding="utf-8")
+    stockfish.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    with pytest.raises(PermissionError, match="not executable"):
+        engine.resolve_engine_path({"stockfish_path": str(stockfish)})
 
 
 def test_onboarding_reports_stockfish_readiness(monkeypatch):

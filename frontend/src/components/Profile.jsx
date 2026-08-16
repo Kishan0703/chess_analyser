@@ -32,7 +32,7 @@ export default function Profile({ onOpenGame }) {
   }
 
   const s = profile.summary
-  const hasData = s.games > 0
+  const hasData = s.analyzed > 0
 
   return (
     <div className="profile-page">
@@ -51,7 +51,9 @@ export default function Profile({ onOpenGame }) {
 
       {!hasData && (
         <div className="card empty-profile">
-          Import games, run engine analysis, and generate coaching to build your profile.
+          {s.games
+            ? 'Run engine analysis on an imported game to build your profile.'
+            : 'Import games, run engine analysis, and generate coaching to build your profile.'}
         </div>
       )}
 
@@ -67,6 +69,7 @@ export default function Profile({ onOpenGame }) {
               </div>
               <p className="status-line">
                 Record: {s.wins} wins, {s.losses} losses, {s.draws} draws.
+                {s.unknown_results ? ` ${s.unknown_results} unknown.` : ''}
               </p>
             </div>
 
@@ -92,41 +95,45 @@ export default function Profile({ onOpenGame }) {
 
           <div className="card">
             <h3>Openings to review</h3>
-            <table className="game-table compact-table">
-              <thead>
-                <tr><th>Opening</th><th>Games</th><th>W-L-D</th><th>Avg loss</th></tr>
-              </thead>
-              <tbody>
-                {profile.openings.map((o) => (
-                  <tr key={o.opening}>
-                    <td>{o.opening}</td>
-                    <td>{o.games}</td>
-                    <td>{o.wins}-{o.losses}-{o.draws}</td>
-                    <td>{o.avg_loss}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="profile-table-wrap">
+              <table className="game-table compact-table">
+                <thead>
+                  <tr><th>Opening</th><th>Games</th><th>W-L-D</th><th>Avg loss</th></tr>
+                </thead>
+                <tbody>
+                  {profile.openings.map((o) => (
+                    <tr key={o.opening}>
+                      <td>{o.opening}</td>
+                      <td>{o.games}</td>
+                      <td>{o.wins}-{o.losses}-{o.draws}</td>
+                      <td>{o.avg_loss}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="card">
             <h3>Recent analyzed games</h3>
-            <table className="game-table compact-table">
-              <thead>
-                <tr><th>Date</th><th>Opponent</th><th>Result</th><th>Errors</th><th>Themes</th></tr>
-              </thead>
-              <tbody>
-                {profile.recent.map((g) => (
-                  <tr key={g.game_id} className="row" onClick={() => onOpenGame(g.game_id)}>
-                    <td>{(g.played_at || '').slice(0, 10)}</td>
-                    <td>{g.opponent}</td>
-                    <td>{g.result}</td>
-                    <td>{g.blunders} blunders, {g.mistakes} mistakes</td>
-                    <td>{g.themes.join(', ') || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="profile-table-wrap">
+              <table className="game-table compact-table">
+                <thead>
+                  <tr><th>Date</th><th>Opponent</th><th>Result</th><th>Errors</th><th>Themes</th></tr>
+                </thead>
+                <tbody>
+                  {profile.recent.map((g) => (
+                    <tr key={g.game_id} className="row" onClick={() => onOpenGame(g.game_id)}>
+                      <td>{(g.played_at || '').slice(0, 10)}</td>
+                      <td>{g.opponent}</td>
+                      <td>{g.result}</td>
+                      <td>{g.blunders} blunders, {g.mistakes} mistakes</td>
+                      <td>{g.themes.join(', ') || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}

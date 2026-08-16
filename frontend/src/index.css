@@ -332,6 +332,10 @@ code {
   padding: 9px 10px;
 }
 
+.profile-table-wrap {
+  overflow-x: auto;
+}
+
 .empty-profile {
   color: var(--text-muted);
 }

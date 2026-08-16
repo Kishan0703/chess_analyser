@@ -5,6 +5,7 @@ slip in an already-lost position isn't branded a blunder.
 """
 import io
 import math
+import os
 from pathlib import Path
 
 import chess
@@ -26,6 +27,10 @@ def resolve_engine_path(cfg: dict | None = None) -> Path:
         raise FileNotFoundError(
             f"Stockfish binary not found at {path}. Set STOCKFISH_PATH or update Settings."
         )
+    if not path.is_file():
+        raise FileNotFoundError(f"Stockfish binary at {path} is not a regular file.")
+    if os.name != "nt" and not os.access(path, os.X_OK):
+        raise PermissionError(f"Stockfish binary at {path} is not executable.")
     return path
 
 # lichess centipawn -> win% curve

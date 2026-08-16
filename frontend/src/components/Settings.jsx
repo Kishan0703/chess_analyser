@@ -3,11 +3,22 @@ import { api } from '../api.js'
 
 export default function Settings() {
   const [cfg, setCfg] = useState(null)
-  const [anthropicApiKey, setAnthropicApiKey] = useState('')
-  const [geminiApiKey, setGeminiApiKey] = useState('')
+  const [stockfishStatus, setStockfishStatus] = useState(null)
   const [status, setStatus] = useState('')
 
-  useEffect(() => { api.settings().then(setCfg).catch((e) => setStatus(e.message)) }, [])
+  const refreshStockfishStatus = async () => {
+    const onboarding = await api.onboarding()
+    setStockfishStatus(onboarding)
+  }
+
+  useEffect(() => {
+    Promise.all([api.settings(), api.onboarding()])
+      .then(([loaded, onboarding]) => {
+        setCfg(loaded)
+        setStockfishStatus(onboarding)
+      })
+      .catch((e) => setStatus(e.message))
+  }, [])
 
   if (!cfg) return <div className="status-line">{status || 'Loading…'}</div>
 
@@ -29,12 +40,14 @@ export default function Settings() {
         engine_threads: Number(cfg.engine_threads),
         stockfish_path: cfg.stockfish_path,
       }
-      if (anthropicApiKey) updates.anthropic_api_key = anthropicApiKey
-      if (geminiApiKey) updates.gemini_api_key = geminiApiKey
       const saved = await api.saveSettings(updates)
       setCfg(saved)
-      setAnthropicApiKey('')
-      setGeminiApiKey('')
+      try {
+        await refreshStockfishStatus()
+      } catch (e) {
+        setStatus(`Saved. Readiness check failed: ${e.message}`)
+        return
+      }
       setStatus('Saved.')
     } catch (e) {
       setStatus(`Save failed: ${e.message}`)
@@ -98,15 +111,9 @@ export default function Settings() {
 
       {isClaude && (
         <>
-          <label>
-            Anthropic API key {cfg.anthropic_api_key ? '(currently set)' : '(not set)'}
-            <input
-              type="password"
-              placeholder={cfg.anthropic_api_key ? '•••••••• (leave blank to keep)' : 'sk-ant-…'}
-              value={anthropicApiKey}
-              onChange={(e) => setAnthropicApiKey(e.target.value)}
-            />
-          </label>
+          <p className="status-line">
+            Anthropic API key {cfg.anthropic_api_key ? 'is set through the environment.' : 'is not set. Add ANTHROPIC_API_KEY to .env.'}
+          </p>
           <label>
             Claude model
             <select
@@ -123,15 +130,9 @@ export default function Settings() {
 
       {isGemini && (
         <>
-          <label>
-            Gemini API key {cfg.gemini_api_key ? '(currently set)' : '(not set)'}
-            <input
-              type="password"
-              placeholder={cfg.gemini_api_key ? '•••••••• (leave blank to keep)' : 'AIza…'}
-              value={geminiApiKey}
-              onChange={(e) => setGeminiApiKey(e.target.value)}
-            />
-          </label>
+          <p className="status-line">
+            Gemini API key {cfg.gemini_api_key ? 'is set through the environment.' : 'is not set. Add GEMINI_API_KEY to .env.'}
+          </p>
           <label>
             Gemini model
             <input
@@ -171,6 +172,13 @@ export default function Settings() {
           onChange={(e) => setCfg({ ...cfg, stockfish_path: e.target.value })}
           placeholder="engines/stockfish.exe"
         />
+        <span className={`status-line ${stockfishStatus && !stockfishStatus.stockfish_found ? 'error' : ''}`}>
+          {stockfishStatus
+            ? stockfishStatus.stockfish_found
+              ? `Ready: ${stockfishStatus.stockfish_path}`
+              : stockfishStatus.stockfish_error
+            : 'Checking Stockfish readiness…'}
+        </span>
       </label>
 
       <div>
