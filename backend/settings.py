@@ -13,6 +13,7 @@ ENV_KEYS = {
     "gemini_fallback_models": ("GEMINI_FALLBACK_MODELS",),
     "gemini_api_key": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "gemini_model": ("GEMINI_MODEL",),
+    "stockfish_path": ("STOCKFISH_PATH",),
 }
 
 DEFAULTS = {
@@ -25,6 +26,7 @@ DEFAULTS = {
     "engine_movetime_ms": 150,   # per-position think time for the analysis pass
     "engine_multipv": 3,
     "engine_threads": 4,
+    "stockfish_path": "engines/stockfish.exe",
     # Coach provider: "ollama", "claude", or "gemini"
     "coach_provider": "ollama",
     "ollama_url": "http://localhost:11434",

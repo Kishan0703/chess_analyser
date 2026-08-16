@@ -8,6 +8,7 @@
   "engine_movetime_ms": 150,
   "engine_multipv": 3,
   "engine_threads": 4,
+  "stockfish_path": "engines/stockfish.exe",
   "coach_provider": "ollama",
   "ollama_url": "http://localhost:11434",
   "ollama_model": "qwen2.5:14b"
