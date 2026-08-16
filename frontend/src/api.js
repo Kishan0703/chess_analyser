@@ -17,6 +17,7 @@ export const api = {
   importGames: (username, months) =>
     request('/api/import', { method: 'POST', body: JSON.stringify({ username, months }) }),
   games: () => request('/api/games'),
+  profile: () => request('/api/profile'),
   onboarding: () => request('/api/onboarding'),
   game: (id) => request(`/api/games/${id}`),
   analyze: (id) => request(`/api/games/${id}/analyze`, { method: 'POST' }),

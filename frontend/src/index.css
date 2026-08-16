@@ -293,6 +293,49 @@ code {
   padding: 24px 24px 40px;
 }
 
+.profile-page {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.2fr);
+  gap: 16px;
+}
+
+.profile-card {
+  min-height: 260px;
+}
+
+.quality-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.quality-list span {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--surface-soft);
+}
+
+.theme-chart {
+  width: 100%;
+  height: 230px;
+}
+
+.compact-table th,
+.compact-table td {
+  padding: 9px 10px;
+}
+
+.empty-profile {
+  color: var(--text-muted);
+}
+
 .page-head {
   display: flex;
   align-items: flex-end;
@@ -1296,6 +1339,10 @@ code {
 }
 
 @media (max-width: 980px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
   .game-layout {
     grid-template-columns: 1fr;
   }

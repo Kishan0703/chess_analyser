@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import GameList from './components/GameList.jsx'
 import GameView from './components/GameView.jsx'
+import Profile from './components/Profile.jsx'
 import Settings from './components/Settings.jsx'
 import ThemePicker from './components/ThemePicker.jsx'
 
 function viewFromLocation() {
   const hash = window.location.hash.replace(/^#\/?/, '')
   const [name, id] = hash.split('/')
+  if (name === 'profile') return { name: 'profile' }
   if (name === 'settings') return { name: 'settings' }
   if (name === 'game' && id) return { name: 'game', id: decodeURIComponent(id) }
   return { name: 'list' }
 }
 
 function hashForView(view) {
+  if (view.name === 'profile') return '#/profile'
   if (view.name === 'settings') return '#/settings'
   if (view.name === 'game') return `#/game/${encodeURIComponent(view.id)}`
   return '#/games'
@@ -51,6 +54,7 @@ export default function App() {
           <button className="ghost-btn" onClick={() => navigate({ name: 'list' })}>← Games</button>
         )}
         <ThemePicker />
+        <button className="ghost-btn" onClick={() => navigate({ name: 'profile' })}>Profile</button>
         <button className="ghost-btn" onClick={() => navigate({ name: 'settings' })}>Settings</button>
       </div>
       <div className="page">
@@ -58,6 +62,9 @@ export default function App() {
           <GameList onOpen={(id) => navigate({ name: 'game', id })} />
         )}
         {view.name === 'game' && <GameView gameId={view.id} />}
+        {view.name === 'profile' && (
+          <Profile onOpenGame={(id) => navigate({ name: 'game', id })} />
+        )}
         {view.name === 'settings' && <Settings />}
       </div>
     </>
