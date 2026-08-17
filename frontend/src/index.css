@@ -386,6 +386,13 @@ code {
   line-height: 1.18;
 }
 
+.page-subtitle {
+  max-width: 620px;
+  margin: 8px 0 0;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
 .eyebrow {
   margin: 0 0 7px;
   color: var(--accent);
@@ -460,6 +467,10 @@ code {
   overflow: hidden;
 }
 
+.workspace-panel {
+  box-shadow: var(--shadow-soft);
+}
+
 .import-panel::before {
   display: none;
 }
@@ -513,6 +524,47 @@ code {
 .import-status {
   grid-column: 2;
   min-height: 20px;
+}
+
+.table-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, auto) minmax(420px, 1fr);
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-xs);
+}
+
+.toolbar-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.toolbar-copy h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.toolbar-copy span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.toolbar-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 140px 150px;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar-controls input,
+.toolbar-controls select {
+  min-height: 36px;
 }
 
 .game-table-wrap {
@@ -608,6 +660,12 @@ code {
   color: var(--best);
   border-color: color-mix(in srgb, var(--best) 36%, transparent);
   background: color-mix(in srgb, var(--best) 10%, white);
+}
+
+.pill.engine {
+  color: var(--accent-3);
+  border-color: color-mix(in srgb, var(--accent-3) 30%, transparent);
+  background: color-mix(in srgb, var(--accent-3) 9%, white);
 }
 
 .game-layout {
@@ -1447,6 +1505,14 @@ code {
   .import-status {
     grid-column: 1;
   }
+
+  .table-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-controls {
+    grid-template-columns: 1fr 140px 150px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -1473,6 +1539,7 @@ code {
   .page { padding: 18px 12px 30px; }
   .stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .import-controls { grid-template-columns: 1fr; }
+  .toolbar-controls { grid-template-columns: 1fr; }
   .game-table th { top: 0; }
   .settings-form { max-width: none; }
 }

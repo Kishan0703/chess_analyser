@@ -53,10 +53,10 @@ export default function Onboarding({ data, onDismiss }) {
   return (
     <div className="onboarding card">
       <button className="ob-dismiss" onClick={onDismiss} title="Hide this">✕</button>
-      <h2 className="ob-head">♞ Welcome to ChessCoach</h2>
+      <h2 className="ob-head">Set up your coaching workspace</h2>
       <p className="ob-sub">
-        Free, local positional coaching for your own games — Stockfish for the engine,
-        an LLM for the strategic <em>why</em>. A quick one-time setup:
+        Complete these steps once, then use the project library below as your review queue.
+        Stockfish grades the moves; the coach explains the strategic reason behind them.
       </p>
       <ol className="ob-list">
         <Step status={data.stockfish_found ? 'done' : 'warn'} title="1 · Stockfish ready">
