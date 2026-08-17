@@ -3,6 +3,8 @@ import { api } from '../api.js'
 import Onboarding from './Onboarding.jsx'
 import InfoTip from './InfoTip.jsx'
 
+const PAGE_SIZE = 20
+
 function outcome(game) {
   if (!game.user_color || game.result === '1/2-1/2') return 'draw'
   return (game.user_color === 'white') === (game.result === '1-0') ? 'win' : 'loss'
@@ -25,6 +27,7 @@ export default function GameList({ onOpen }) {
   const [query, setQuery] = useState('')
   const [resultFilter, setResultFilter] = useState('all')
   const [analysisFilter, setAnalysisFilter] = useState('all')
+  const [page, setPage] = useState(1)
 
   const refresh = () => api.games().then(setGames)
     .catch((e) => setStatus(e.message)).finally(() => setLoading(false))
@@ -82,6 +85,13 @@ export default function GameList({ onOpen }) {
       return haystack.includes(needle)
     })
   }, [analysisFilter, games, query, resultFilter])
+
+  const pageCount = Math.max(1, Math.ceil(filteredGames.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const pageGames = filteredGames.slice(pageStart, pageStart + PAGE_SIZE)
+  const showingStart = filteredGames.length ? pageStart + 1 : 0
+  const showingEnd = Math.min(pageStart + PAGE_SIZE, filteredGames.length)
 
   const setupOk = ob && (
     ob.coach_provider === 'claude'
@@ -170,22 +180,42 @@ export default function GameList({ onOpen }) {
       <div className="table-toolbar">
         <div className="toolbar-copy">
           <h3>Project library</h3>
-          <span>{filteredGames.length} of {games.length} games shown</span>
+          <span>
+            {showingStart}-{showingEnd} of {filteredGames.length} shown
+            {filteredGames.length !== games.length ? ` · ${games.length} total` : ''}
+          </span>
         </div>
         <div className="toolbar-controls">
           <input
             placeholder="Search player, opening, date..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
             aria-label="Search games"
           />
-          <select value={resultFilter} onChange={(e) => setResultFilter(e.target.value)} aria-label="Filter result">
+          <select
+            value={resultFilter}
+            onChange={(e) => {
+              setResultFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Filter result"
+          >
             <option value="all">All results</option>
             <option value="win">Wins</option>
             <option value="loss">Losses</option>
             <option value="draw">Draws</option>
           </select>
-          <select value={analysisFilter} onChange={(e) => setAnalysisFilter(e.target.value)} aria-label="Filter analysis status">
+          <select
+            value={analysisFilter}
+            onChange={(e) => {
+              setAnalysisFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Filter analysis status"
+          >
             <option value="all">All analysis</option>
             <option value="coached">Coached</option>
             <option value="engine">Engine only</option>
@@ -215,7 +245,7 @@ export default function GameList({ onOpen }) {
                 <td colSpan={7}><div className="skeleton sk-row" /></td>
               </tr>
             ))}
-            {!loading && filteredGames.map((g) => {
+            {!loading && pageGames.map((g) => {
               const o = outcome(g)
               const youWhite = g.user_color === 'white'
               const youBlack = g.user_color === 'black'
@@ -244,6 +274,20 @@ export default function GameList({ onOpen }) {
           </tbody>
         </table>
       </div>
+
+      {!loading && filteredGames.length > PAGE_SIZE && (
+        <div className="pagination-bar">
+          <span>Page {currentPage} of {pageCount}</span>
+          <div className="pagination-actions">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+              Previous
+            </button>
+            <button className="primary" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage === pageCount}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

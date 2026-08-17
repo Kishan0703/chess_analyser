@@ -29,6 +29,7 @@ function hashForView(view) {
 
 export default function App() {
   const [view, setView] = useState(() => viewFromLocation())
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
     window.history.replaceState(viewFromLocation(), '', hashForView(viewFromLocation()))
@@ -48,15 +49,27 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarOpen ? '' : 'sidebar-collapsed'}`}>
       <aside className="sidebar" aria-label="Primary navigation">
-        <button className="brand brand-button" onClick={() => navigate({ name: 'list' })} title="Home">
-          <span className="brand-mark">♜</span>
-          <span className="brand-copy">
-            <span className="brand-name">ChessCoach</span>
-            <span className="brand-tag">positional coaching</span>
-          </span>
-        </button>
+        <div className="sidebar-head">
+          <button className="brand brand-button" onClick={() => navigate({ name: 'list' })} title="Home">
+            <span className="brand-mark">♜</span>
+            <span className="brand-copy">
+              <span className="brand-name">ChessCoach</span>
+              <span className="brand-tag">positional coaching</span>
+            </span>
+          </button>
+          <button
+            className="sidebar-toggle"
+            onClick={() => setSidebarOpen((open) => !open)}
+            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Open sidebar'}
+            title={sidebarOpen ? 'Collapse sidebar' : 'Open sidebar'}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
 
         <nav className="sidebar-nav">
           {NAV_ITEMS.map((item) => (
@@ -67,7 +80,7 @@ export default function App() {
               aria-current={activeNav === item.id ? 'page' : undefined}
             >
               <span className="nav-icon" aria-hidden>{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
             </button>
           ))}
         </nav>
