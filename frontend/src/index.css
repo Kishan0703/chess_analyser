@@ -335,6 +335,45 @@ code {
   gap: 16px;
 }
 
+.profile-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.profile-insight {
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.profile-insight.strength {
+  border-left: 4px solid var(--best);
+}
+
+.profile-insight.focus {
+  border-left: 4px solid var(--mistake);
+}
+
+.profile-insight h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.profile-insight ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+}
+
+.profile-insight li::marker {
+  color: var(--accent);
+}
+
 .profile-card {
   min-height: 260px;
 }
@@ -356,6 +395,7 @@ code {
 .theme-chart {
   width: 100%;
   height: 230px;
+  font-variant-numeric: tabular-nums;
 }
 
 .compact-table th,
@@ -1537,6 +1577,10 @@ code {
   }
 
   .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-insight-grid {
     grid-template-columns: 1fr;
   }
 

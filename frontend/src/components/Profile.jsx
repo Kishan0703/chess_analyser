@@ -11,6 +11,17 @@ function Stat({ label, value }) {
   )
 }
 
+function InsightList({ title, items, tone }) {
+  return (
+    <div className={`profile-insight ${tone}`}>
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </div>
+  )
+}
+
 export default function Profile({ onOpenGame }) {
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
@@ -33,6 +44,19 @@ export default function Profile({ onOpenGame }) {
 
   const s = profile.summary
   const hasData = s.analyzed > 0
+  const topTheme = profile.themes?.[0]
+  const topOpening = profile.openings?.[0]
+  const strengths = [
+    s.coached > 0 ? `${s.coached} coached game${s.coached === 1 ? '' : 's'} with strategic themes saved.` : null,
+    s.avg_win_pct_loss <= 8 ? `Average loss is ${s.avg_win_pct_loss}%, which suggests steady conversion habits.` : null,
+    s.wins > s.losses ? `Positive sample record: ${s.wins}-${s.losses}-${s.draws}.` : null,
+  ].filter(Boolean)
+  const focusAreas = [
+    s.blunders > 0 ? `Reduce blunders first: ${s.blunders} found across analyzed games.` : null,
+    s.mistakes > 0 ? `Review mistake positions: ${s.mistakes} medium-severity swings.` : null,
+    topTheme ? `Recurring theme: ${topTheme.slug} appeared ${topTheme.count} time${topTheme.count === 1 ? '' : 's'}.` : null,
+    topOpening ? `Opening to review: ${topOpening.opening} (${topOpening.games} game${topOpening.games === 1 ? '' : 's'}).` : null,
+  ].filter(Boolean)
 
   return (
     <div className="profile-page">
@@ -40,6 +64,7 @@ export default function Profile({ onOpenGame }) {
         <div>
           <p className="eyebrow">Training profile</p>
           <h2>Recurring patterns</h2>
+          <p className="page-subtitle">Turn analyzed games into a short study queue.</p>
         </div>
         <div className="stats-strip">
           <Stat label="Games" value={s.games} />
@@ -91,6 +116,19 @@ export default function Profile({ onOpenGame }) {
                 <p className="status-line">Generate coaching on analyzed games to collect themes.</p>
               )}
             </div>
+          </div>
+
+          <div className="profile-insight-grid">
+            <InsightList
+              title="Strengths"
+              tone="strength"
+              items={strengths.length ? strengths : ['Analyze and coach more games to identify reliable strengths.']}
+            />
+            <InsightList
+              title="Focus areas"
+              tone="focus"
+              items={focusAreas.length ? focusAreas : ['No recurring weaknesses yet. Add more analyzed games to build a clearer queue.']}
+            />
           </div>
 
           <div className="card">
