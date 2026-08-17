@@ -49,7 +49,7 @@ export default function GameChat({ gameId, ply, analyzed, currentMove }) {
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
-            Ask about plans, best moves, why a move was bad, tactics, or what to play next.
+            Ask a focused follow-up about this exact position, plan, tactic, or engine line.
           </div>
         )}
         {messages.map((m, i) => (

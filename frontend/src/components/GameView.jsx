@@ -321,7 +321,7 @@ export default function GameView({ gameId }) {
       </div>
 
       <div className="side-col">
-        <div className="card">
+        <div className="card game-summary-card">
           <h3>
             {game.white} {game.white_elo ? `(${game.white_elo})` : ''} vs{' '}
             {game.black} {game.black_elo ? `(${game.black_elo})` : ''} · {game.result}
@@ -339,7 +339,7 @@ export default function GameView({ gameId }) {
                 : analyzed ? 'Re-run engine' : 'Run engine analysis'}
             </button>
             <button
-              className="primary" onClick={startCoach} disabled={!analyzed || coachBusy}
+              className="secondary-action" onClick={startCoach} disabled={!analyzed || coachBusy}
               title="Generates the positional report — one focused pass per key moment, then a game summary. Takes ~1–3 min."
             >
               {coachBusy ? 'Coach is thinking…' : game.coach ? 'Re-coach' : 'Get coaching'}
@@ -375,17 +375,7 @@ export default function GameView({ gameId }) {
         )}
 
         {analyzed && (
-          <GameChat
-            key={gameId}
-            gameId={gameId}
-            ply={ply}
-            analyzed={analyzed}
-            currentMove={currentMove}
-          />
-        )}
-
-        {analyzed && (
-          <div className="card">
+          <div className="card move-list-card">
             <h3>
               Moves{' '}
               <InfoTip>
@@ -406,6 +396,16 @@ export default function GameView({ gameId }) {
           onJump={(p) => { setVariation(null); setPly(p) }}
           onVariation={enterVariation}
         />
+
+        {analyzed && (
+          <GameChat
+            key={gameId}
+            gameId={gameId}
+            ply={ply}
+            analyzed={analyzed}
+            currentMove={currentMove}
+          />
+        )}
       </div>
     </div>
   )

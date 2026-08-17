@@ -670,17 +670,17 @@ code {
 
 .game-layout {
   display: grid;
-  grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: minmax(440px, 590px) minmax(420px, 1fr);
+  gap: 18px;
   align-items: start;
 }
 
 .board-col {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   position: sticky;
-  top: 76px;
+  top: 18px;
   min-width: 0;
   max-height: none;
   overflow: visible;
@@ -688,7 +688,7 @@ code {
 }
 
 .board-shell {
-  padding: 18px 22px 22px 18px;
+  padding: 14px 18px 18px 14px;
   overflow: hidden;
   box-shadow: var(--shadow);
   width: 100%;
@@ -745,35 +745,79 @@ code {
   align-items: center;
 }
 
+.game-summary-card {
+  border-left: 4px solid var(--accent);
+}
+
+.move-list-card {
+  padding-bottom: 12px;
+}
+
+.secondary-action {
+  color: var(--accent);
+  background: var(--surface-soft);
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+}
+
+.secondary-action:hover:not(:disabled) {
+  color: var(--primary-hover);
+  background: color-mix(in srgb, var(--accent) 10%, white);
+}
+
 .moves {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) minmax(0, 1fr);
-  gap: 3px 8px;
-  max-height: 280px;
+  gap: 2px 8px;
+  max-height: 300px;
   overflow-y: auto;
   font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+  font-size: 13px;
 }
 
 .moves .num {
   color: var(--text-muted);
-  padding: 3px 0;
+  padding: 5px 0;
 }
 
 .move {
   cursor: pointer;
-  padding: 3px 7px;
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
   border-radius: 7px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: 1px solid transparent;
 }
 
 .move:hover { background: var(--surface-strong); }
-.move.current { background: var(--text); color: #fff; }
-.move .badge { font-size: 11px; margin-left: 3px; font-weight: 900; }
+.move.current {
+  background: var(--surface-soft);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.move .badge {
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 10px;
+  margin-left: auto;
+  font-weight: 900;
+  background: var(--surface-strong);
+}
 .badge.brilliant { color: #0f9f87; }
 .badge.great { color: var(--accent-3); }
 .badge.best { color: var(--best); }
+.badge.good { color: var(--good); }
 .badge.inaccuracy { color: var(--inaccuracy); }
 .badge.mistake { color: var(--mistake); }
 .badge.blunder { color: var(--blunder); }
@@ -811,6 +855,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  border-left: 4px solid var(--accent-3);
 }
 
 .position-analysis-head {
@@ -855,7 +900,7 @@ code {
   gap: 8px;
   padding: 12px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.58);
   border: 1px solid var(--border);
 }
 
@@ -924,7 +969,7 @@ code {
   align-items: center;
   padding: 8px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.58);
   border: 1px solid var(--border);
 }
 
@@ -984,6 +1029,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  border-left: 4px solid var(--border-strong);
 }
 
 .game-chat-head h3 {
@@ -1006,7 +1052,7 @@ code {
   color: var(--text-dim);
   font-size: 13px;
   line-height: 1.45;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.52);
 }
 
 .chat-message {
@@ -1028,7 +1074,7 @@ code {
 .chat-message.assistant {
   align-self: flex-start;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--border);
 }
 
@@ -1070,6 +1116,10 @@ code {
   margin-bottom: 4px;
 }
 
+.eval-card {
+  padding: 10px 8px 6px;
+}
+
 .eval-move-label {
   font-weight: 600;
   font-size: 13px;
@@ -1101,9 +1151,13 @@ code {
   color: var(--text);
 }
 
+.coach-report-card {
+  border-left: 4px solid var(--accent);
+}
+
 .moment {
   border-left: 4px solid var(--accent-3);
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.56);
   padding: 11px 12px;
   border-radius: 0 8px 8px 0;
   margin-bottom: 10px;

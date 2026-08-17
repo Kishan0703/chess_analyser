@@ -33,7 +33,7 @@ export default function CoachPanel({ coach, themes, moves, onJump, onVariation }
   }
 
   return (
-    <div className="card">
+    <div className="card coach-report-card">
       <h3>Coach's report</h3>
       {coach.opening_summary
         ? <p className="coach-summary">{coach.opening_summary}</p>
