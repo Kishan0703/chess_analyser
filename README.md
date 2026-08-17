@@ -1,11 +1,8 @@
 # ChessCoach
 
-ChessCoach is a local chess analysis app for your Chess.com games. It imports your
-recent games, runs Stockfish, grades moves, and generates positional coaching with an
-LLM.
+ChessCoach is a local-first chess coaching desktop app for Chess.com games. It imports your games, stores them in SQLite, analyzes every move with a local Stockfish UCI engine, and uses Ollama or hosted LLMs to explain the strategic reason behind key moments.
 
-The main goal is practical study: not only whether a move was bad, but why the
-position called for a different plan.
+This is not a simple AI API wrapper. The app coordinates local executables, deterministic chess feature extraction, background jobs, model-provider fallbacks, and an interactive React analysis UI.
 
 ## What It Does
 
@@ -17,6 +14,23 @@ position called for a different plan.
 - Explains plans, pawn structures, piece quality, weak squares, files, and recurring
   themes.
 - Supports local and hosted LLM backends.
+
+## Engineering Highlights
+
+- Runs Stockfish as a local UCI process and stores per-move evals, best lines, and win-probability loss.
+- Supports Ollama for local LLM coaching, with Claude and Gemini as optional hosted backends.
+- Grounds LLM prompts with deterministic board facts, exact piece placement, and legal move consequences to reduce hallucinations.
+- Builds a cross-game Training Profile from stored move grades and strategic themes.
+- Ships as a local desktop app through `pywebview`, while still supporting browser-based development.
+
+## Screenshots
+
+Screenshots should be placed in `docs/screenshots/`:
+
+- `game-view.png`: board, eval graph, moves, coach report.
+- `profile.png`: Training Profile page with themes and openings.
+- `variation.png`: red played-move arrow versus green Stockfish best-move arrow.
+- `settings.png`: Stockfish and Ollama readiness.
 
 ## Coaching Backends
 

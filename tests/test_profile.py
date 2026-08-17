@@ -1,0 +1,149 @@
+import sqlite3
+
+from backend import db
+
+
+def make_conn():
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.executescript(db.SCHEMA)
+    return conn
+
+
+def insert_game(conn, game_id, white, black, result, opening, played_at, user_color,
+                engine_analyzed=1):
+    conn.execute(
+        """INSERT INTO games
+           (id, source, source_url, pgn, white, black, result, opening, played_at, user_color, engine_analyzed)
+           VALUES (?, 'chess.com', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (game_id, f"https://game/{game_id}", "1. e4 e5 *", white, black, result, opening,
+         played_at, user_color, engine_analyzed),
+    )
+
+
+def insert_move(conn, game_id, ply, classification, loss):
+    conn.execute(
+        """INSERT INTO moves
+           (game_id, ply, san, uci, fen_after, classification, win_pct_loss)
+           VALUES (?, ?, 'e4', 'e2e4', 'fen', ?, ?)""",
+        (game_id, ply, classification, loss),
+    )
+
+
+def test_profile_counts_user_results_move_quality_themes_and_openings():
+    conn = make_conn()
+    insert_game(conn, 1, "kishan", "rival1", "1-0", "Italian Game", "2026-01-01 12:00:00", "white")
+    insert_game(conn, 2, "rival2", "kishan", "1-0", "Sicilian Defense", "2026-01-02 12:00:00", "black")
+    insert_move(conn, 1, 1, "best", 0)
+    insert_move(conn, 1, 3, "mistake", 21.5)
+    insert_move(conn, 2, 2, "blunder", 34.0)
+    insert_move(conn, 2, 4, "inaccuracy", 12.0)
+    conn.execute(
+        "INSERT INTO analyses (game_id, commentary, model, input_tokens, output_tokens) VALUES (1, '{}', 'qwen', 10, 5)"
+    )
+    conn.execute(
+        "INSERT INTO themes (game_id, slug, side, severity, ply_start, ply_end, note) VALUES (1, 'weak-king', 'user', 'decisive', 3, 3, 'king exposed')"
+    )
+    conn.commit()
+
+    profile = db.get_profile(conn, username="kishan")
+
+    assert profile["summary"]["games"] == 2
+    assert profile["summary"]["analyzed"] == 2
+    assert profile["summary"]["coached"] == 1
+    assert profile["summary"]["wins"] == 1
+    assert profile["summary"]["losses"] == 1
+    assert profile["summary"]["draws"] == 0
+    assert profile["summary"]["blunders"] == 1
+    assert profile["summary"]["mistakes"] == 1
+    assert profile["summary"]["inaccuracies"] == 1
+    assert profile["summary"]["avg_win_pct_loss"] == 22.5
+    assert profile["move_quality"][0] == {"classification": "blunder", "count": 1}
+    assert profile["themes"][0]["slug"] == "weak-king"
+    assert profile["themes"][0]["decisive"] == 1
+    assert profile["openings"][0]["opening"] == "Sicilian Defense"
+    assert profile["openings"][0]["losses"] == 1
+    assert profile["recent"][0]["game_id"] == 2
+    assert profile["recent"][0]["opponent"] == "rival2"
+
+
+def test_profile_endpoint_uses_configured_username(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    conn = make_conn()
+    insert_game(conn, 1, "kishan", "rival", "1-0", "Italian Game", "2026-01-01 12:00:00", "white")
+    insert_move(conn, 1, 1, "best", 0)
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self):
+            return conn
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(app_module.settings, "load", lambda: {"chesscom_username": "kishan"})
+    monkeypatch.setattr(app_module.db, "connect", lambda: ConnCtx())
+
+    client = TestClient(app_module.app)
+    response = client.get("/api/profile")
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["games"] == 1
+
+
+def test_profile_uses_only_analyzed_games_for_engine_metrics_and_recent_games():
+    conn = make_conn()
+    insert_game(conn, 1, "kishan", "rival1", "1-0", "Italian Game", "2026-01-01 12:00:00", "white")
+    insert_game(conn, 2, "kishan", "rival2", "0-1", "Caro-Kann Defense", "2026-01-02 12:00:00", "white", 0)
+    insert_move(conn, 1, 1, "mistake", 20.0)
+    conn.commit()
+
+    profile = db.get_profile(conn, username="kishan")
+
+    assert profile["summary"]["games"] == 2
+    assert profile["summary"]["analyzed"] == 1
+    assert profile["summary"]["mistakes"] == 1
+    assert profile["openings"] == [{
+        "opening": "Italian Game", "games": 1, "wins": 1, "losses": 0,
+        "draws": 0, "avg_loss": 20.0,
+    }]
+    assert [game["game_id"] for game in profile["recent"]] == [1]
+
+
+def test_profile_maps_results_and_ignores_unknown_null_losses_and_other_players():
+    conn = make_conn()
+    insert_game(conn, 1, "kishan", "rival1", "1-0", "Italian Game", "2026-01-01 12:00:00", "white")
+    insert_game(conn, 2, "rival2", "kishan", "1-0", "French Defense", "2026-01-02 12:00:00", "black")
+    insert_game(conn, 3, "kishan", "rival3", "1/2-1/2", "Italian Game", "2026-01-03 12:00:00", "white")
+    insert_game(conn, 4, "rival4", "kishan", "0-1", "Sicilian Defense", "2026-01-04 12:00:00", "black")
+    insert_game(conn, 5, "kishan", "rival5", "*", "French Defense", "2026-01-05 12:00:00", "white")
+    insert_game(conn, 6, "other1", "other2", "1-0", "Other Opening", "2026-01-06 12:00:00", "white")
+    insert_move(conn, 1, 1, "mistake", 20.0)
+    insert_move(conn, 3, 1, "blunder", None)
+    conn.commit()
+
+    profile = db.get_profile(conn, username="kishan")
+
+    assert profile["summary"]["games"] == 5
+    assert profile["summary"]["wins"] == 2
+    assert profile["summary"]["losses"] == 1
+    assert profile["summary"]["draws"] == 1
+    assert profile["summary"]["unknown_results"] == 1
+    assert profile["summary"]["avg_win_pct_loss"] == 20.0
+    assert all(opening["opening"] != "Other Opening" for opening in profile["openings"])
+
+    limited = db.get_profile(conn, username="kishan", limit_games=2)
+
+    assert limited["summary"]["games"] == 2
+    assert limited["summary"]["wins"] == 1
+    assert limited["summary"]["unknown_results"] == 1
+
+
+def test_profile_empty_summary_includes_no_unknown_results():
+    profile = db.get_profile(make_conn(), username="kishan")
+
+    assert profile["summary"]["games"] == 0
+    assert profile["summary"]["unknown_results"] == 0

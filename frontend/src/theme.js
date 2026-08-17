@@ -1,5 +1,7 @@
 export function getStoredTheme() {
-  return localStorage.getItem('cc-theme') || 'midnight'
+  const stored = localStorage.getItem('cc-theme')
+  if (stored === 'slate') return stored
+  return 'classic'
 }
 
 export function applyTheme(id = getStoredTheme()) {

@@ -1,0 +1,180 @@
+import { useEffect, useMemo, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { api } from '../api.js'
+
+function Stat({ label, value }) {
+  return (
+    <div className="stat-card">
+      <div className="stat-num">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  )
+}
+
+function InsightList({ title, items, tone }) {
+  return (
+    <div className={`profile-insight ${tone}`}>
+      <h3>{title}</h3>
+      <ul>
+        {items.map((item) => <li key={item}>{item}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+export default function Profile({ onOpenGame }) {
+  const [profile, setProfile] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.profile().then(setProfile).catch((e) => setError(e.message))
+  }, [])
+
+  const themeData = useMemo(() => (profile?.themes || []).slice(0, 8), [profile])
+
+  if (error) return <div className="status-line error">{error}</div>
+  if (!profile) {
+    return (
+      <div className="profile-page">
+        <div className="skeleton" style={{ height: 120, borderRadius: 8 }} />
+        <div className="skeleton" style={{ height: 320, borderRadius: 8 }} />
+      </div>
+    )
+  }
+
+  const s = profile.summary
+  const hasData = s.analyzed > 0
+  const topTheme = profile.themes?.[0]
+  const topOpening = profile.openings?.[0]
+  const strengths = [
+    s.coached > 0 ? `${s.coached} coached game${s.coached === 1 ? '' : 's'} with strategic themes saved.` : null,
+    s.avg_win_pct_loss <= 8 ? `Average loss is ${s.avg_win_pct_loss}%, which suggests steady conversion habits.` : null,
+    s.wins > s.losses ? `Positive sample record: ${s.wins}-${s.losses}-${s.draws}.` : null,
+  ].filter(Boolean)
+  const focusAreas = [
+    s.blunders > 0 ? `Reduce blunders first: ${s.blunders} found across analyzed games.` : null,
+    s.mistakes > 0 ? `Review mistake positions: ${s.mistakes} medium-severity swings.` : null,
+    topTheme ? `Recurring theme: ${topTheme.slug} appeared ${topTheme.count} time${topTheme.count === 1 ? '' : 's'}.` : null,
+    topOpening ? `Opening to review: ${topOpening.opening} (${topOpening.games} game${topOpening.games === 1 ? '' : 's'}).` : null,
+  ].filter(Boolean)
+
+  return (
+    <div className="profile-page">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Training profile</p>
+          <h2>Recurring patterns</h2>
+          <p className="page-subtitle">Turn analyzed games into a short study queue.</p>
+        </div>
+        <div className="stats-strip">
+          <Stat label="Games" value={s.games} />
+          <Stat label="Analyzed" value={s.analyzed} />
+          <Stat label="Coached" value={s.coached} />
+          <Stat label="Avg loss" value={`${s.avg_win_pct_loss}%`} />
+        </div>
+      </div>
+
+      {!hasData && (
+        <div className="card empty-profile">
+          {s.games
+            ? 'Run engine analysis on an imported game to build your profile.'
+            : 'Import games, run engine analysis, and generate coaching to build your profile.'}
+        </div>
+      )}
+
+      {hasData && (
+        <>
+          <div className="profile-grid">
+            <div className="card profile-card">
+              <h3>Move quality</h3>
+              <div className="quality-list">
+                <span>Blunders <strong>{s.blunders}</strong></span>
+                <span> mistakes <strong>{s.mistakes}</strong></span>
+                <span> inaccuracies <strong>{s.inaccuracies}</strong></span>
+              </div>
+              <p className="status-line">
+                Record: {s.wins} wins, {s.losses} losses, {s.draws} draws.
+                {s.unknown_results ? ` ${s.unknown_results} unknown.` : ''}
+              </p>
+            </div>
+
+            <div className="card profile-card">
+              <h3>Top themes</h3>
+              {themeData.length ? (
+                <div className="theme-chart">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={themeData} layout="vertical" margin={{ left: 12, right: 12 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} />
+                      <YAxis dataKey="slug" type="category" width={132} tick={{ fontSize: 12 }} />
+                      <Tooltip />
+                      <Bar dataKey="count" fill="var(--accent)" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="status-line">Generate coaching on analyzed games to collect themes.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="profile-insight-grid">
+            <InsightList
+              title="Strengths"
+              tone="strength"
+              items={strengths.length ? strengths : ['Analyze and coach more games to identify reliable strengths.']}
+            />
+            <InsightList
+              title="Focus areas"
+              tone="focus"
+              items={focusAreas.length ? focusAreas : ['No recurring weaknesses yet. Add more analyzed games to build a clearer queue.']}
+            />
+          </div>
+
+          <div className="card">
+            <h3>Openings to review</h3>
+            <div className="profile-table-wrap">
+              <table className="game-table compact-table">
+                <thead>
+                  <tr><th>Opening</th><th>Games</th><th>W-L-D</th><th>Avg loss</th></tr>
+                </thead>
+                <tbody>
+                  {profile.openings.map((o) => (
+                    <tr key={o.opening}>
+                      <td>{o.opening}</td>
+                      <td>{o.games}</td>
+                      <td>{o.wins}-{o.losses}-{o.draws}</td>
+                      <td>{o.avg_loss}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>Recent analyzed games</h3>
+            <div className="profile-table-wrap">
+              <table className="game-table compact-table">
+                <thead>
+                  <tr><th>Date</th><th>Opponent</th><th>Result</th><th>Errors</th><th>Themes</th></tr>
+                </thead>
+                <tbody>
+                  {profile.recent.map((g) => (
+                    <tr key={g.game_id} className="row" onClick={() => onOpenGame(g.game_id)}>
+                      <td>{(g.played_at || '').slice(0, 10)}</td>
+                      <td>{g.opponent}</td>
+                      <td>{g.result}</td>
+                      <td>{g.blunders} blunders, {g.mistakes} mistakes</td>
+                      <td>{g.themes.join(', ') || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

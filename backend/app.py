@@ -45,6 +45,7 @@ class SettingsUpdate(BaseModel):
     engine_movetime_ms: int | None = None
     engine_multipv: int | None = None
     engine_threads: int | None = None
+    stockfish_path: str | None = None
     # Coach provider settings — without these declared, Pydantic silently drops
     # them from the request and the Ollama model selection never reaches save().
     coach_provider: str | None = None
@@ -118,7 +119,15 @@ def onboarding():
         "ollama_model_present": False,
         "claude_key_set": bool(cfg.get("anthropic_api_key")),
         "gemini_key_set": bool(cfg.get("gemini_api_key")),
+        "stockfish_path": cfg.get("stockfish_path") or "",
+        "stockfish_found": False,
+        "stockfish_error": "",
     }
+    try:
+        engine.resolve_engine_path(cfg)
+        out["stockfish_found"] = True
+    except Exception as e:
+        out["stockfish_error"] = str(e)
     if provider == "ollama":
         try:
             base = cfg["ollama_url"].rstrip("/")
@@ -139,6 +148,13 @@ def games(limit: int = 200):
     username = settings.load().get("chesscom_username")
     with db.connect() as conn:
         return db.list_games(conn, limit, username=username)
+
+
+@app.get("/api/profile")
+def profile():
+    username = settings.load().get("chesscom_username")
+    with db.connect() as conn:
+        return db.get_profile(conn, username=username)
 
 
 @app.get("/api/games/{game_id}")
@@ -295,6 +311,16 @@ def get_position_analysis(game_id: int, ply: int):
         "side_to_move": "white" if board.turn == chess.WHITE else "black",
         "candidates": candidates,
     }
+
+
+@app.get("/api/games/{game_id}/position/{ply}/explanation")
+def get_position_explanation(game_id: int, ply: int):
+    try:
+        return coach.explain_current_move(game_id, ply)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"coach error: {e}")
 
 
 @app.post("/api/games/{game_id}/chat")

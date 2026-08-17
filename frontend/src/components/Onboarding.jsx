@@ -53,29 +53,34 @@ export default function Onboarding({ data, onDismiss }) {
   return (
     <div className="onboarding card">
       <button className="ob-dismiss" onClick={onDismiss} title="Hide this">✕</button>
-      <h2 className="ob-head">♞ Welcome to ChessCoach</h2>
+      <h2 className="ob-head">Set up your coaching workspace</h2>
       <p className="ob-sub">
-        Free, local positional coaching for your own games — Stockfish for the engine,
-        an LLM for the strategic <em>why</em>. A quick one-time setup:
+        Complete these steps once, then use the project library below as your review queue.
+        Stockfish grades the moves; the coach explains the strategic reason behind them.
       </p>
       <ol className="ob-list">
-        <Step status={eng.status} title="1 · Coaching engine ready">{eng.node}</Step>
-        <Step status={hasUser ? 'done' : 'todo'} title="2 · Connect your chess.com account">
+        <Step status={data.stockfish_found ? 'done' : 'warn'} title="1 · Stockfish ready">
+          {data.stockfish_found
+            ? <>Stockfish found at <code>{data.stockfish_path}</code>.</>
+            : <>Set the Stockfish binary path in <strong>Settings</strong>. {data.stockfish_error}</>}
+        </Step>
+        <Step status={eng.status} title="2 · Coaching engine ready">{eng.node}</Step>
+        <Step status={hasUser ? 'done' : 'todo'} title="3 · Connect your chess.com account">
           {hasUser
             ? <>Importing games for <strong>{data.chesscom_username}</strong>.</>
             : <>Enter your chess.com username in the bar below and import.</>}
         </Step>
-        <Step status={hasGames ? 'done' : 'todo'} title="3 · Import your games">
+        <Step status={hasGames ? 'done' : 'todo'} title="4 · Import your games">
           {hasGames
             ? <>{data.games} game{data.games === 1 ? '' : 's'} imported.</>
             : <>Use the import bar below to pull your recent games (free chess.com API).</>}
         </Step>
-        <Step status={analyzed ? 'done' : 'todo'} title="4 · Analyze a game">
+        <Step status={analyzed ? 'done' : 'todo'} title="5 · Analyze a game">
           {analyzed
             ? <>{data.engine_analyzed} game{data.engine_analyzed === 1 ? '' : 's'} analyzed.</>
             : <>Open any game and click <strong>Run engine analysis</strong> for evals + move grades.</>}
         </Step>
-        <Step status={coached ? 'done' : 'todo'} title="5 · Get coaching">
+        <Step status={coached ? 'done' : 'todo'} title="6 · Get coaching">
           {coached
             ? <>{data.coached} game{data.coached === 1 ? '' : 's'} coached — you’re all set!</>
             : <>In an analyzed game, click <strong>Get coaching</strong> for the positional report.</>}

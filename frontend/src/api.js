@@ -17,6 +17,7 @@ export const api = {
   importGames: (username, months) =>
     request('/api/import', { method: 'POST', body: JSON.stringify({ username, months }) }),
   games: () => request('/api/games'),
+  profile: () => request('/api/profile'),
   onboarding: () => request('/api/onboarding'),
   game: (id) => request(`/api/games/${id}`),
   analyze: (id) => request(`/api/games/${id}/analyze`, { method: 'POST' }),
@@ -25,6 +26,7 @@ export const api = {
   coachStatus: (id) => request(`/api/games/${id}/coach/status`),
   bestLine: (id, ply) => request(`/api/games/${id}/bestline/${ply}`),
   positionAnalysis: (id, ply) => request(`/api/games/${id}/position/${ply}`),
+  positionExplanation: (id, ply) => request(`/api/games/${id}/position/${ply}/explanation`),
   chat: (id, question, ply, history) =>
     request(`/api/games/${id}/chat`, {
       method: 'POST',

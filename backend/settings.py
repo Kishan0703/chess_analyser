@@ -13,7 +13,10 @@ ENV_KEYS = {
     "gemini_fallback_models": ("GEMINI_FALLBACK_MODELS",),
     "gemini_api_key": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
     "gemini_model": ("GEMINI_MODEL",),
+    "stockfish_path": ("STOCKFISH_PATH",),
 }
+
+SECRET_KEYS = frozenset({"anthropic_api_key", "gemini_api_key"})
 
 DEFAULTS = {
     "anthropic_api_key": "",
@@ -25,17 +28,23 @@ DEFAULTS = {
     "engine_movetime_ms": 150,   # per-position think time for the analysis pass
     "engine_multipv": 3,
     "engine_threads": 4,
+    "stockfish_path": "engines/stockfish.exe",
     # Coach provider: "ollama", "claude", or "gemini"
     "coach_provider": "ollama",
     "ollama_url": "http://localhost:11434",
     "ollama_model": "qwen2.5:14b",
 }
 
+PERSISTED_DEFAULTS = {
+    key: value for key, value in DEFAULTS.items() if key not in SECRET_KEYS
+}
+
 
 def _load_file_settings() -> dict:
     if SETTINGS_PATH.exists():
         data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        return {**DEFAULTS, **data}
+        persisted = {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
+        return {**DEFAULTS, **persisted}
     return dict(DEFAULTS)
 
 
@@ -74,9 +83,9 @@ def load() -> dict:
 
 def save(updates: dict) -> dict:
     current = _load_file_settings()
-    all_keys = set(DEFAULTS)
-    for key in all_keys:
+    for key in PERSISTED_DEFAULTS:
         if key in updates and updates[key] is not None:
             current[key] = updates[key]
-    SETTINGS_PATH.write_text(json.dumps(current, indent=2), encoding="utf-8")
-    return {**current, **_env_overrides()}
+    persisted = {key: current[key] for key in PERSISTED_DEFAULTS}
+    SETTINGS_PATH.write_text(json.dumps(persisted, indent=2), encoding="utf-8")
+    return load()

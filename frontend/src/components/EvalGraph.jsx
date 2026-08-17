@@ -23,7 +23,7 @@ export default function EvalGraph({ moves, currentPly, currentMove, onSelect }) 
   const current = data.find((d) => d.ply === currentPly)
 
   return (
-    <div className="card" style={{ padding: '10px 4px 6px' }}>
+    <div className="card eval-card">
       <div className="eval-readout">
         {evalLabel(currentMove)}
         {currentMove && (

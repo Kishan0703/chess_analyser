@@ -5,6 +5,7 @@ slip in an already-lost position isn't branded a blunder.
 """
 import io
 import math
+import os
 from pathlib import Path
 
 import chess
@@ -13,7 +14,24 @@ import chess.pgn
 
 from . import db, settings
 
-ENGINE_PATH = Path(__file__).resolve().parent.parent / "engines" / "stockfish.exe"
+DEFAULT_ENGINE_PATH = Path("engines") / "stockfish.exe"
+
+
+def resolve_engine_path(cfg: dict | None = None) -> Path:
+    cfg = cfg or settings.load()
+    raw = cfg.get("stockfish_path") or str(DEFAULT_ENGINE_PATH)
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = settings.ROOT / path
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Stockfish binary not found at {path}. Set STOCKFISH_PATH or update Settings."
+        )
+    if not path.is_file():
+        raise FileNotFoundError(f"Stockfish binary at {path} is not a regular file.")
+    if os.name != "nt" and not os.access(path, os.X_OK):
+        raise PermissionError(f"Stockfish binary at {path} is not executable.")
+    return path
 
 # lichess centipawn -> win% curve
 def win_pct(cp: int) -> float:
@@ -94,7 +112,7 @@ def analyze_game(game_id: int, progress: dict | None = None) -> None:
     nodes = list(game.mainline())
     limit = chess.engine.Limit(time=cfg["engine_movetime_ms"] / 1000)
 
-    engine = chess.engine.SimpleEngine.popen_uci(str(ENGINE_PATH))
+    engine = chess.engine.SimpleEngine.popen_uci(str(resolve_engine_path(cfg)))
     engine.configure({"Threads": cfg["engine_threads"]})
     moves: list[dict] = []
     try:
@@ -173,7 +191,7 @@ def get_bestline(fen: str, movetime_ms: int = 500, max_plies: int = 8) -> list[s
     """
     cfg = settings.load()
     board = chess.Board(fen)
-    sf = chess.engine.SimpleEngine.popen_uci(str(ENGINE_PATH))
+    sf = chess.engine.SimpleEngine.popen_uci(str(resolve_engine_path(cfg)))
     sf.configure({"Threads": cfg["engine_threads"]})
     try:
         info = sf.analyse(board, chess.engine.Limit(time=movetime_ms / 1000))
@@ -201,7 +219,7 @@ def batch_candidates(fens: list[str], multipv: int = 3, movetime_ms: int = 500,
     difference positionally. Eval is white-POV centipawns (mate distance or None).
     """
     cfg = settings.load()
-    sf = chess.engine.SimpleEngine.popen_uci(str(ENGINE_PATH))
+    sf = chess.engine.SimpleEngine.popen_uci(str(resolve_engine_path(cfg)))
     sf.configure({"Threads": cfg["engine_threads"]})
     results: dict[str, list[dict]] = {}
     try:

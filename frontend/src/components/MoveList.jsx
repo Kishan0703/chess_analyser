@@ -2,6 +2,7 @@ const BADGES = {
   brilliant: '‼',
   great: '!',
   best: '★',
+  good: '✓',
   inaccuracy: '?!',
   mistake: '?',
   blunder: '??',
@@ -14,6 +15,14 @@ function Move({ move, currentPly, onSelect }) {
     <span
       className={`move ${move.ply === currentPly ? 'current' : ''}`}
       onClick={() => onSelect(move.ply)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect(move.ply)
+        }
+      }}
     >
       {move.san}
       {badge && <span className={`badge ${move.classification}`}>{badge}</span>}

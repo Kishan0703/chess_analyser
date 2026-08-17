@@ -3,6 +3,8 @@ import { api } from '../api.js'
 import Onboarding from './Onboarding.jsx'
 import InfoTip from './InfoTip.jsx'
 
+const PAGE_SIZE = 20
+
 function outcome(game) {
   if (!game.user_color || game.result === '1/2-1/2') return 'draw'
   return (game.user_color === 'white') === (game.result === '1-0') ? 'win' : 'loss'
@@ -22,6 +24,10 @@ export default function GameList({ onOpen }) {
   const [ob, setOb] = useState(null)
   const [dismissed, setDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
+  const [resultFilter, setResultFilter] = useState('all')
+  const [analysisFilter, setAnalysisFilter] = useState('all')
+  const [page, setPage] = useState(1)
 
   const refresh = () => api.games().then(setGames)
     .catch((e) => setStatus(e.message)).finally(() => setLoading(false))
@@ -63,6 +69,30 @@ export default function GameList({ onOpen }) {
     return s
   }, [games])
 
+  const filteredGames = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return games.filter((g) => {
+      const o = outcome(g)
+      if (resultFilter !== 'all' && o !== resultFilter) return false
+      if (analysisFilter === 'coached' && !g.coached) return false
+      if (analysisFilter === 'engine' && (!g.engine_analyzed || g.coached)) return false
+      if (analysisFilter === 'unreviewed' && g.engine_analyzed) return false
+      if (!needle) return true
+      const haystack = [
+        g.white, g.black, g.opening, g.eco, g.time_control, g.result,
+        (g.played_at || '').slice(0, 10),
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(needle)
+    })
+  }, [analysisFilter, games, query, resultFilter])
+
+  const pageCount = Math.max(1, Math.ceil(filteredGames.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pageStart = (currentPage - 1) * PAGE_SIZE
+  const pageGames = filteredGames.slice(pageStart, pageStart + PAGE_SIZE)
+  const showingStart = filteredGames.length ? pageStart + 1 : 0
+  const showingEnd = Math.min(pageStart + PAGE_SIZE, filteredGames.length)
+
   const setupOk = ob && (
     ob.coach_provider === 'claude'
       ? ob.claude_key_set
@@ -84,6 +114,7 @@ export default function GameList({ onOpen }) {
         <div>
           <p className="eyebrow">Chess.com archive</p>
           <h2>Your games</h2>
+          <p className="page-subtitle">Import, filter, and open games for engine analysis and coaching.</p>
         </div>
         {stats.total > 0 && (
           <div className="stats-strip">
@@ -113,12 +144,12 @@ export default function GameList({ onOpen }) {
         )}
       </div>
 
-      <div className="import-panel">
+      <div className="import-panel workspace-panel">
         <div className="import-copy">
           <span className="import-icon">♟</span>
           <div>
-            <h3>Load fresh games</h3>
-            <p>Pull recent games, then open any row for engine analysis and coaching.</p>
+            <h3>Build your review queue</h3>
+            <p>Pull recent games from Chess.com, then open any row to analyze key moments.</p>
           </div>
         </div>
         <div className="import-controls">
@@ -146,6 +177,53 @@ export default function GameList({ onOpen }) {
         </span>
       </div>
 
+      <div className="table-toolbar">
+        <div className="toolbar-copy">
+          <h3>Project library</h3>
+          <span>
+            {showingStart}-{showingEnd} of {filteredGames.length} shown
+            {filteredGames.length !== games.length ? ` · ${games.length} total` : ''}
+          </span>
+        </div>
+        <div className="toolbar-controls">
+          <input
+            placeholder="Search player, opening, date..."
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Search games"
+          />
+          <select
+            value={resultFilter}
+            onChange={(e) => {
+              setResultFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Filter result"
+          >
+            <option value="all">All results</option>
+            <option value="win">Wins</option>
+            <option value="loss">Losses</option>
+            <option value="draw">Draws</option>
+          </select>
+          <select
+            value={analysisFilter}
+            onChange={(e) => {
+              setAnalysisFilter(e.target.value)
+              setPage(1)
+            }}
+            aria-label="Filter analysis status"
+          >
+            <option value="all">All analysis</option>
+            <option value="coached">Coached</option>
+            <option value="engine">Engine only</option>
+            <option value="unreviewed">Unreviewed</option>
+          </select>
+        </div>
+      </div>
+
       <div className="game-table-wrap">
         <table className="game-table">
           <thead>
@@ -167,7 +245,7 @@ export default function GameList({ onOpen }) {
                 <td colSpan={7}><div className="skeleton sk-row" /></td>
               </tr>
             ))}
-            {!loading && games.map((g) => {
+            {!loading && pageGames.map((g) => {
               const o = outcome(g)
               const youWhite = g.user_color === 'white'
               const youBlack = g.user_color === 'black'
@@ -180,9 +258,9 @@ export default function GameList({ onOpen }) {
                   <td>{(g.opening || g.eco || '').slice(0, 40)}</td>
                   <td>{g.time_control}</td>
                   <td>
-                    {g.coached ? <span className="pill done">coached</span>
-                      : g.engine_analyzed ? <span className="pill done">engine</span>
-                      : <span className="pill">—</span>}
+                    {g.coached ? <span className="pill done">Coached</span>
+                      : g.engine_analyzed ? <span className="pill engine">Engine</span>
+                      : <span className="pill">Open</span>}
                   </td>
                 </tr>
               )
@@ -190,9 +268,26 @@ export default function GameList({ onOpen }) {
             {!loading && games.length === 0 && (
               <tr><td colSpan={7} className="status-line empty-state">No games yet. Import your chess.com archive above.</td></tr>
             )}
+            {!loading && games.length > 0 && filteredGames.length === 0 && (
+              <tr><td colSpan={7} className="status-line empty-state">No games match the current filters.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      {!loading && filteredGames.length > PAGE_SIZE && (
+        <div className="pagination-bar">
+          <span>Page {currentPage} of {pageCount}</span>
+          <div className="pagination-actions">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+              Previous
+            </button>
+            <button className="primary" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={currentPage === pageCount}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

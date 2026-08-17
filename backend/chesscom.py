@@ -9,7 +9,7 @@ from . import db
 
 API = "https://api.chess.com/pub"
 # chess.com requires a descriptive User-Agent or it 403s
-HEADERS = {"User-Agent": "ChessCoach personal analysis app (contact: levi.allen251@gmail.com)"}
+HEADERS = {"User-Agent": "ChessCoach local analysis app (https://github.com/Kishan0703/chess_analyser)"}
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
