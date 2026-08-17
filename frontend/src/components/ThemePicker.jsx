@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react'
 import { getStoredTheme, applyTheme } from '../theme.js'
 
-// Swatch preview colors mirror the palettes defined in index.css.
 const THEMES = [
-  { id: 'midnight', name: 'Classic', bg: '#f6f8f6', accent: '#3a8045' },
-  { id: 'walnut', name: 'Walnut', bg: '#f7f4ef', accent: '#9a6130' },
-  { id: 'forest', name: 'Forest', bg: '#edf5ec', accent: '#2f7d46' },
-  { id: 'royal', name: 'Royal', bg: '#f5f4fa', accent: '#6750a4' },
+  { id: 'classic', name: 'Classic', bg: '#f6f8f6', accent: '#3a8045' },
+  { id: 'slate', name: 'Slate', bg: '#f2f5f2', accent: '#315f95' },
 ]
 
 export default function ThemePicker() {
@@ -22,6 +19,7 @@ export default function ThemePicker() {
 
   return (
     <div className="theme-picker" title="Color theme">
+      <span className="theme-label">Theme</span>
       {THEMES.map((t) => (
         <button
           key={t.id}

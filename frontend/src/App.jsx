@@ -5,6 +5,12 @@ import Profile from './components/Profile.jsx'
 import Settings from './components/Settings.jsx'
 import ThemePicker from './components/ThemePicker.jsx'
 
+const NAV_ITEMS = [
+  { view: { name: 'list' }, id: 'list', icon: '01', label: 'Your games' },
+  { view: { name: 'profile' }, id: 'profile', icon: '02', label: 'Training profile' },
+  { view: { name: 'settings' }, id: 'settings', icon: '03', label: 'Settings' },
+]
+
 function viewFromLocation() {
   const hash = window.location.hash.replace(/^#\/?/, '')
   const [name, id] = hash.split('/')
@@ -31,6 +37,8 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
+  const activeNav = view.name === 'game' ? 'list' : view.name
+
   const navigate = useCallback((nextView) => {
     const nextHash = hashForView(nextView)
     setView(nextView)
@@ -40,33 +48,50 @@ export default function App() {
   }, [])
 
   return (
-    <>
-      <div className="topbar">
-        <div className="brand" onClick={() => navigate({ name: 'list' })} title="Home">
-          <span className="brand-mark">♞</span>
+    <div className="app-shell">
+      <aside className="sidebar" aria-label="Primary navigation">
+        <button className="brand brand-button" onClick={() => navigate({ name: 'list' })} title="Home">
+          <span className="brand-mark">♜</span>
           <span className="brand-copy">
             <span className="brand-name">ChessCoach</span>
-            <span className="brand-tag">play sharper positions</span>
+            <span className="brand-tag">positional coaching</span>
           </span>
+        </button>
+
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item ${activeNav === item.id ? 'active' : ''}`}
+              onClick={() => navigate(item.view)}
+              aria-current={activeNav === item.id ? 'page' : undefined}
+            >
+              <span className="nav-icon" aria-hidden>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          {view.name === 'game' && (
+            <button className="ghost-btn back-btn" onClick={() => navigate({ name: 'list' })}>Back to games</button>
+          )}
+          <ThemePicker />
         </div>
-        <div className="spacer" />
-        {view.name !== 'list' && (
-          <button className="ghost-btn" onClick={() => navigate({ name: 'list' })}>← Games</button>
-        )}
-        <ThemePicker />
-        <button className="ghost-btn" onClick={() => navigate({ name: 'profile' })}>Profile</button>
-        <button className="ghost-btn" onClick={() => navigate({ name: 'settings' })}>Settings</button>
-      </div>
-      <div className="page">
-        {view.name === 'list' && (
-          <GameList onOpen={(id) => navigate({ name: 'game', id })} />
-        )}
-        {view.name === 'game' && <GameView gameId={view.id} />}
-        {view.name === 'profile' && (
-          <Profile onOpenGame={(id) => navigate({ name: 'game', id })} />
-        )}
-        {view.name === 'settings' && <Settings />}
-      </div>
-    </>
+      </aside>
+
+      <main className="shell-main">
+        <div className="page">
+          {view.name === 'list' && (
+            <GameList onOpen={(id) => navigate({ name: 'game', id })} />
+          )}
+          {view.name === 'game' && <GameView gameId={view.id} />}
+          {view.name === 'profile' && (
+            <Profile onOpenGame={(id) => navigate({ name: 'game', id })} />
+          )}
+          {view.name === 'settings' && <Settings />}
+        </div>
+      </main>
+    </div>
   )
 }
