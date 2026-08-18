@@ -243,8 +243,13 @@ def _summary_user_prompt(game: dict, user_color: str, moments_out: list[dict],
 
 # --- LLM backends ------------------------------------------------------------
 
+def _add_metric(metrics: dict | None, key: str, value: int | float) -> None:
+    if metrics is not None:
+        metrics[key] = metrics.get(key, 0) + value
+
+
 def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
-                 json_mode: bool = True
+                 json_mode: bool = True, metrics: dict | None = None
                  ) -> tuple[str, str, int, int]:
     """Returns (text, model, input_tokens, output_tokens). Raises on error."""
     base = cfg["ollama_url"].rstrip("/")
@@ -259,6 +264,7 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
         "options": {
             "temperature": 0.3,
             "num_predict": num_predict,
+            "think": False,
             # Ollama defaults num_ctx to 2048, which truncates these prompts;
             # 16384 fits comfortably on a 16GB GPU.
             "num_ctx": 16384,
@@ -275,6 +281,11 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
         )
     data = r.json()
     text = data["message"]["content"]
+    _add_metric(metrics, "ollama_calls", 1)
+    _add_metric(metrics, "ollama_prompt_eval_count", data.get("prompt_eval_count", 0))
+    _add_metric(metrics, "ollama_eval_count", data.get("eval_count", 0))
+    _add_metric(metrics, "ollama_prompt_eval_duration", data.get("prompt_eval_duration", 0))
+    _add_metric(metrics, "ollama_eval_duration", data.get("eval_duration", 0))
     return text, model, data.get("prompt_eval_count", 0), data.get("eval_count", 0)
 
 
@@ -398,13 +409,15 @@ def _call_gemini_model(prompt: str, api_key: str, model: str, system: str,
 
 
 def _call_provider(prompt: str, cfg: dict, system: str, budget: int,
-                   json_mode: bool = True) -> tuple[str, str, int, int]:
+                   json_mode: bool = True, metrics: dict | None = None
+                   ) -> tuple[str, str, int, int]:
     provider = cfg.get("coach_provider", "ollama")
     if provider == "claude":
         return _call_claude(prompt, cfg, system, max_tokens=budget)
     if provider == "gemini":
         return _call_gemini(prompt, cfg, system, max_tokens=budget, json_mode=json_mode)
-    return _call_ollama(prompt, cfg, system, num_predict=budget, json_mode=json_mode)
+    return _call_ollama(prompt, cfg, system, num_predict=budget, json_mode=json_mode,
+                        metrics=metrics)
 
 
 def _chat_prompt(game: dict, user_color: str, question: str, ply: int,
@@ -631,11 +644,10 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
     if progress is not None:
         progress["done"] = 1
 
-    def call(prompt: str, system: str, budget: int) -> tuple[str, str, int, int]:
-        return _call_provider(prompt, cfg, system, budget)
-
     in_tok = out_tok = 0
     provider = cfg.get("coach_provider", "ollama")
+    metrics = {} if provider == "ollama" else None
+    started_at = time.perf_counter()
     model = {
         "claude": cfg.get("claude_model"),
         "gemini": cfg.get("gemini_model"),
@@ -643,6 +655,9 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
 
     # One focused call per moment. Ply / moment_type are OURS — never the model's.
     key_moments_out: list[dict] = []
+    def call(prompt: str, system: str, budget: int) -> tuple[str, str, int, int]:
+        return _call_provider(prompt, cfg, system, budget, metrics=metrics)
+
     for idx, m in enumerate(moments):
         if progress is not None:
             progress["label"] = f"Analyzing key moment {idx + 1} of {len(moments)}…"
@@ -695,6 +710,9 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
         "themes": summ["themes"],
         "takeaways": summ["takeaways"],
     }
+    if metrics is not None:
+        metrics["coach_wall_time_ms"] = round((time.perf_counter() - started_at) * 1000)
+        commentary["performance"] = metrics
     with db.connect() as conn:
         db.save_coach(conn, game_id, commentary, model, in_tok, out_tok)
         conn.commit()

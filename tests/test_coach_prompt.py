@@ -53,3 +53,50 @@ def test_parse_json_extracts_object_from_markdown_fence():
 
     assert parsed["title"] == "Weak dark squares"
     assert parsed["explanation"] == "You lost control."
+
+
+def test_call_ollama_records_timing_metrics(monkeypatch):
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "message": {"content": '{"title":"Fast","explanation":"Grounded."}'},
+                "prompt_eval_count": 123,
+                "prompt_eval_duration": 456_000_000,
+                "eval_count": 17,
+                "eval_duration": 89_000_000,
+            }
+
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["url"] = url
+        captured["payload"] = json
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(coach.httpx, "post", fake_post)
+    metrics = {}
+
+    text, model, input_tokens, output_tokens = coach._call_ollama(
+        "Explain the moment.",
+        {"ollama_url": "http://ollama.local/", "ollama_model": "qwen3:8b"},
+        "System",
+        metrics=metrics,
+    )
+
+    assert text == '{"title":"Fast","explanation":"Grounded."}'
+    assert model == "qwen3:8b"
+    assert input_tokens == 123
+    assert output_tokens == 17
+    assert metrics == {
+        "ollama_calls": 1,
+        "ollama_prompt_eval_count": 123,
+        "ollama_eval_count": 17,
+        "ollama_prompt_eval_duration": 456_000_000,
+        "ollama_eval_duration": 89_000_000,
+    }
+    assert captured["url"] == "http://ollama.local/api/chat"
+    assert captured["payload"]["options"]["think"] is False
