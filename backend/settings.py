@@ -32,7 +32,7 @@ DEFAULTS = {
     # Coach provider: "ollama", "claude", or "gemini"
     "coach_provider": "ollama",
     "ollama_url": "http://localhost:11434",
-    "ollama_model": "qwen2.5:14b",
+    "ollama_model": "qwen3:8b",
 }
 
 PERSISTED_DEFAULTS = {
@@ -40,11 +40,17 @@ PERSISTED_DEFAULTS = {
 }
 
 
-def _load_file_settings() -> dict:
+def _load_raw_file_settings() -> dict:
     if SETTINGS_PATH.exists():
         data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        persisted = {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
-        return {**DEFAULTS, **persisted}
+        return {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
+    return {}
+
+
+def _load_file_settings() -> dict:
+    data = _load_raw_file_settings()
+    if data:
+        return {**DEFAULTS, **data}
     return dict(DEFAULTS)
 
 
@@ -65,10 +71,12 @@ def _parse_env_file() -> dict:
     return values
 
 
-def _env_overrides() -> dict:
+def _env_overrides(file_settings: dict | None = None) -> dict:
     dotenv = _parse_env_file()
     out = {}
     for setting_key, env_names in ENV_KEYS.items():
+        if setting_key == "coach_provider" and file_settings is not None and setting_key in file_settings:
+            continue
         for env_name in env_names:
             value = os.environ.get(env_name) or dotenv.get(env_name)
             if value:
@@ -78,7 +86,8 @@ def _env_overrides() -> dict:
 
 
 def load() -> dict:
-    return {**_load_file_settings(), **_env_overrides()}
+    file_settings = _load_raw_file_settings()
+    return {**DEFAULTS, **file_settings, **_env_overrides(file_settings)}
 
 
 def save(updates: dict) -> dict:

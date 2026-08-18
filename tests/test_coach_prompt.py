@@ -53,3 +53,35 @@ def test_parse_json_extracts_object_from_markdown_fence():
 
     assert parsed["title"] == "Weak dark squares"
     assert parsed["explanation"] == "You lost control."
+
+
+def test_ollama_uses_fast_local_options(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "message": {"content": "{}"},
+                "prompt_eval_count": 10,
+                "eval_count": 2,
+            }
+
+    def fake_post(url, json, timeout):
+        captured["url"] = url
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(coach.httpx, "post", fake_post)
+
+    coach._call_ollama(
+        "prompt",
+        {"ollama_url": "http://localhost:11434", "ollama_model": "qwen3:8b"},
+        "system",
+    )
+
+    assert captured["json"]["options"]["num_ctx"] == 8192
+    assert captured["json"]["think"] is False
