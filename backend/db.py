@@ -89,6 +89,21 @@ CREATE TABLE IF NOT EXISTS summary_cache (
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_summary_cache_game ON summary_cache(game_id);
+
+CREATE TABLE IF NOT EXISTS bot_games (
+    id INTEGER PRIMARY KEY,
+    player_color TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    advanced_json TEXT NOT NULL,
+    pgn TEXT NOT NULL DEFAULT '',
+    fen TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    result TEXT NOT NULL DEFAULT '*',
+    saved_game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bot_games_status ON bot_games(status, updated_at);
 """
 
 
@@ -102,6 +117,42 @@ def connect() -> sqlite3.Connection:
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+
+
+def create_bot_game(conn: sqlite3.Connection, payload: dict) -> int:
+    cur = conn.execute(
+        """INSERT INTO bot_games
+           (player_color, difficulty, advanced_json, pgn, fen, status, result)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            payload["player_color"],
+            payload["difficulty"],
+            json.dumps(payload["advanced"], sort_keys=True),
+            payload.get("pgn", ""),
+            payload["fen"],
+            payload.get("status", "active"),
+            payload.get("result", "*"),
+        ),
+    )
+    return cur.lastrowid
+
+
+def get_bot_game(conn: sqlite3.Connection, bot_game_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM bot_games WHERE id = ?", (bot_game_id,)).fetchone()
+    if row is None:
+        return None
+    data = dict(row)
+    data["advanced"] = json.loads(data.pop("advanced_json"))
+    return data
+
+
+def update_bot_game(conn: sqlite3.Connection, bot_game_id: int, payload: dict) -> None:
+    conn.execute(
+        """UPDATE bot_games
+           SET pgn = ?, fen = ?, status = ?, result = ?, updated_at = datetime('now')
+           WHERE id = ?""",
+        (payload["pgn"], payload["fen"], payload["status"], payload["result"], bot_game_id),
+    )
 
 
 def insert_game(conn: sqlite3.Connection, g: dict) -> int | None:
