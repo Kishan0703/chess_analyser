@@ -96,6 +96,18 @@ def _append_pgn(pgn: str, moves: list[chess.Move], result: str) -> str:
     return game.accept(chess.pgn.StringExporter(headers=False, variations=False, comments=False))
 
 
+def _board_from_session(session: dict) -> chess.Board:
+    if not session["pgn"]:
+        return chess.Board(session["fen"])
+    game = chess.pgn.read_game(io.StringIO(session["pgn"]))
+    if game is None:
+        raise ValueError("stored bot game has invalid PGN")
+    board = game.board()
+    for move in game.mainline_moves():
+        board.push(move)
+    return board
+
+
 def serialize_board_state(session: dict, board: chess.Board) -> dict:
     return {
         "id": session["id"],
@@ -110,7 +122,8 @@ def serialize_board_state(session: dict, board: chess.Board) -> dict:
     }
 
 
-def new_game(player_color: str, difficulty: str, advanced: dict | None = None) -> dict:
+def new_game(player_color: str, difficulty: str, advanced: dict | None = None,
+             bot_selector: Callable[[chess.Board, dict], chess.Move] | None = None) -> dict:
     if player_color not in {"white", "black"}:
         raise ValueError("player_color must be 'white' or 'black'")
     if difficulty not in DIFFICULTY_PRESETS:
@@ -129,9 +142,24 @@ def new_game(player_color: str, difficulty: str, advanced: dict | None = None) -
         "status": "active",
         "result": "*",
     }
+    last_bot_move = None
+    if player_color == "black":
+        selector = bot_selector or choose_bot_move
+        bot_move = selector(board, config)
+        if bot_move not in board.legal_moves:
+            raise ValueError("bot selector returned an illegal move")
+        last_bot_move = _move_data(board, bot_move)
+        board.push(bot_move)
+        session.update({
+            "pgn": _append_pgn("", [bot_move], "*"),
+            "fen": board.fen(),
+        })
     with db.connect() as conn:
         session["id"] = db.create_bot_game(conn, session)
-    return serialize_board_state(session, board)
+    state = serialize_board_state(session, board)
+    if last_bot_move is not None:
+        state["last_bot_move"] = last_bot_move
+    return state
 
 
 def _save_finished_game(conn, session: dict) -> None:
@@ -165,7 +193,7 @@ def apply_player_move(bot_game_id: int, move: dict,
         if session["status"] != "active":
             raise ValueError("bot game is finished")
 
-        board = chess.Board(session["fen"])
+        board = _board_from_session(session)
         player_color = chess.WHITE if session["player_color"] == "white" else chess.BLACK
         if board.turn != player_color:
             raise ValueError("not the player's turn")
