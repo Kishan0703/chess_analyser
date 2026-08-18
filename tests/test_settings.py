@@ -47,3 +47,7 @@ def test_saved_coach_provider_wins_over_dotenv_default(tmp_path, monkeypatch):
     monkeypatch.delenv("CHESSCOACH_PROVIDER", raising=False)
 
     assert settings.load()["coach_provider"] == "ollama"
+
+
+def test_default_local_coach_model_is_laptop_sized():
+    assert settings.DEFAULTS["ollama_model"] == "qwen3:8b"

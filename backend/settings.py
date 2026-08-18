@@ -54,6 +54,13 @@ def _load_file_settings() -> dict:
     return dict(DEFAULTS)
 
 
+def _load_raw_file_settings() -> dict:
+    if SETTINGS_PATH.exists():
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        return {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
+    return {}
+
+
 def _parse_env_file() -> dict:
     if not ENV_PATH.exists():
         return {}

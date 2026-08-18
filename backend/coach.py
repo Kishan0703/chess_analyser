@@ -10,6 +10,7 @@ Supports two backends:
   - "gemini"  — Google Gemini API (requires API key)
 """
 import io
+import hashlib
 import json
 import re
 import time
@@ -30,11 +31,67 @@ THEME_SLUGS = [
     "endgame-technique", "time-trouble", "tactical-oversight", "missed-tactic",
 ]
 
+LOCAL_MOMENT_PROMPT_VERSION = "ollama-moment-v1"
+LOCAL_SUMMARY_VERSION = "ollama-summary-v1"
+LOCAL_CANDIDATE_CACHE_VERSION = "candidate-v1"
+
+LOCAL_MOMENT_SYSTEM = """You are a chess writing assistant. Stockfish and deterministic board
+facts have already decided the chess meaning. Rewrite the verified draft into concise coaching
+prose for the student.
+
+Respond with one JSON object using exactly:
+{"title": "<3-6 words>", "explanation": "<3-5 concise sentences>"}
+Do not add chess claims, tactics, squares, or plans that are not in the supplied facts."""
+
 
 def _str(v) -> str:
     if isinstance(v, list):
         return " ".join(str(x) for x in v)
     return str(v) if v else ""
+
+
+def _stable_hash(value: object) -> str:
+    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _select_moments(moves: list[dict], user_color: str | None, provider: str) -> list[dict]:
+    if provider == "ollama":
+        return engine.key_moments(moves, user_color, max_negative=3, max_positive=1)
+    return engine.key_moments(moves, user_color, max_negative=7, max_positive=3)
+
+
+def _candidate_cache_key(fen: str, cfg: dict, line_plies: int = 6) -> str:
+    return _stable_hash({
+        "version": LOCAL_CANDIDATE_CACHE_VERSION,
+        "fen": fen,
+        "stockfish_path": cfg.get("stockfish_path"),
+        "movetime_ms": cfg.get("engine_movetime_ms", 150),
+        "multipv": cfg.get("engine_multipv", 3),
+        "threads": cfg.get("engine_threads", 4),
+        "line_plies": line_plies,
+    })
+
+
+def _moment_cache_key(game_id: int, moment: dict, model: str, candidates: list[dict],
+                      budget: int) -> str:
+    return _stable_hash({
+        "version": LOCAL_MOMENT_PROMPT_VERSION,
+        "game_id": game_id,
+        "ply": moment["ply"],
+        "model": model,
+        "budget": budget,
+        "candidate_hash": _stable_hash(candidates),
+    })
+
+
+def _summary_cache_key(game_id: int, model: str, key_moments: list[dict]) -> str:
+    return _stable_hash({
+        "version": LOCAL_SUMMARY_VERSION,
+        "game_id": game_id,
+        "model": model,
+        "moment_hash": _stable_hash(key_moments),
+    })
 
 
 # --- shared prompt fragments -------------------------------------------------
@@ -219,6 +276,68 @@ def _moment_user_prompt(game: dict, user_color: str, block: str) -> str:
     )
 
 
+def _deterministic_moment_output(m: dict, user_color: str) -> dict:
+    classification = m.get("classification") or "move"
+    move = m.get("san") or "the move"
+    best = m.get("best_san") or "another move"
+    line = m.get("best_line") or best
+    loss = float(m.get("win_pct_loss") or 0)
+    if m.get("moment_type") == "positive":
+        title = f"Strong move {move}"
+        explanation = (
+            f"Your {move} was a strong Stockfish-approved choice for {user_color}. "
+            f"The engine line was {line}, so the key lesson is to understand the plan this move "
+            "kept available and keep following that sequence. Use this position as a pattern: when "
+            "the best move appears, verify the forcing line before switching plans."
+        )
+    else:
+        title = f"{classification.capitalize()} on {move}"
+        explanation = (
+            f"Your {move} was a {classification} because it gave away about {loss:.1f}% win "
+            f"probability. Stockfish preferred {best}, with the line {line}. The practical lesson "
+            "is to pause before committing and compare the natural move with the engine move's "
+            "forcing idea, threat, or defensive resource."
+        )
+    return {"title": title, "explanation": explanation}
+
+
+def _offline_moment_prompt(game: dict, user_color: str, m: dict, before_fen: str,
+                           candidates: list[dict]) -> str:
+    board = chess.Board(before_fen)
+    user_white = user_color == "white"
+    move_no = (m["ply"] + 1) // 2
+    dots = "." if m["ply"] % 2 == 1 else "..."
+    played = _safe_consequences(board, m.get("uci")) or "(not available)"
+    best = _safe_consequences(board, m.get("best_uci")) or "(not available)"
+    candidate_lines = [
+        f"- {c.get('move')} ({_persp_eval(c.get('eval_cp'), c.get('eval_mate'), user_white)}): "
+        f"{c.get('line')}"
+        for c in candidates
+    ] or ["- (no extra candidates cached)"]
+    draft = _deterministic_moment_output(m, user_color)
+    return (
+        "Rewrite this verified draft into natural coaching prose. Do not add chess claims beyond "
+        "the facts below.\n\n"
+        f"Student: {game.get('white') if user_color == 'white' else game.get('black')}, "
+        f"playing {user_color}. Opening: {game.get('opening') or game.get('eco') or 'unknown'}.\n"
+        f"Moment: {move_no}{dots} {m.get('san')} at ply {m['ply']}.\n"
+        f"Stockfish verdict: {m.get('classification') or 'move'}.\n"
+        f"Win% loss: {m.get('win_pct_loss') or 0}.\n"
+        f"Eval after played move from student's perspective: "
+        f"{_persp_eval(m.get('eval_cp'), m.get('eval_mate'), user_white)}.\n"
+        f"Best move: {m.get('best_san') or 'unknown'}.\n"
+        f"Best line: {m.get('best_line') or m.get('best_san') or 'unknown'}.\n\n"
+        f"Piece placement:\n{features.piece_placement(board)}\n\n"
+        f"Position facts:\n{features.describe(board)}\n\n"
+        f"Candidate lines:\n" + "\n".join(candidate_lines) + "\n\n"
+        f"Played move consequences:\n{played}\n\n"
+        f"Best move consequences:\n{best}\n\n"
+        f"Verified draft title: {draft['title']}\n"
+        f"Verified draft explanation: {draft['explanation']}\n"
+        "JSON only."
+    )
+
+
 def _summary_user_prompt(game: dict, user_color: str, moments_out: list[dict],
                          counts: dict, movetext: str) -> str:
     user_name = game["white"] if user_color == "white" else game["black"]
@@ -241,10 +360,85 @@ def _summary_user_prompt(game: dict, user_color: str, moments_out: list[dict],
     )
 
 
+def _cached_batch_candidates(fens: list[str], cfg: dict,
+                             metrics: dict | None = None) -> dict[str, list[dict]]:
+    if not fens:
+        return {}
+    results: dict[str, list[dict]] = {}
+    misses: list[str] = []
+    seen = list(dict.fromkeys(fens))
+    with db.connect() as conn:
+        for fen in seen:
+            cached = db.get_candidate_cache(conn, _candidate_cache_key(fen, cfg))
+            if cached is None:
+                misses.append(fen)
+            else:
+                results[fen] = cached
+                _add_metric(metrics, "candidate_cache_hits", 1)
+    _add_metric(metrics, "candidate_cache_misses", len(misses))
+    if misses:
+        fresh = engine.batch_candidates(
+            misses,
+            multipv=cfg.get("engine_multipv", 3),
+            movetime_ms=cfg.get("engine_movetime_ms", 150),
+        )
+        with db.connect() as conn:
+            for fen, candidates in fresh.items():
+                results[fen] = candidates
+                db.save_candidate_cache(conn, _candidate_cache_key(fen, cfg), fen, candidates)
+            conn.commit()
+    return results
+
+
+def _parse_moment_json(text: str, fallback: dict) -> dict:
+    try:
+        parsed = _parse_json(text)
+    except Exception:
+        return fallback
+    title = parsed.get("title") or fallback["title"]
+    explanation = (parsed.get("explanation") or parsed.get("analysis")
+                   or parsed.get("note") or fallback["explanation"])
+    return {"title": _str(title), "explanation": _str(explanation)}
+
+
+def _deterministic_summary(game: dict, user_color: str, key_moments_out: list[dict],
+                           counts: dict) -> dict:
+    opening = game.get("opening") or game.get("eco") or "the opening"
+    if key_moments_out:
+        moment_bits = ", ".join(
+            f"ply {m['ply']} ({m.get('moment_type', 'moment')}: {m['title']})"
+            for m in key_moments_out[:4]
+        )
+        summary = (
+            f"In {opening}, the offline coach focused on the verified Stockfish swing points: "
+            f"{moment_bits}. Your review should start with the biggest evaluation losses, then "
+            "compare each move with Stockfish's stored best line."
+        )
+    else:
+        summary = (
+            f"In {opening}, Stockfish did not find a major user mistake among the selected "
+            "offline coaching moments. Review the move list for smaller inaccuracies and keep "
+            "checking candidate moves before committing."
+        )
+    takeaways = []
+    if counts["blunder"] or counts["mistake"]:
+        takeaways.append("Before forcing moves, compare your candidate with Stockfish's stored best line.")
+    if counts["inaccuracy"]:
+        takeaways.append("Review the inaccurate moves and write down what the engine move improved.")
+    if not takeaways:
+        takeaways.append("Replay the strongest engine-approved move and identify the plan it preserved.")
+    return {"opening_summary": summary, "themes": [], "takeaways": takeaways}
+
+
 # --- LLM backends ------------------------------------------------------------
 
+def _add_metric(metrics: dict | None, key: str, value: int | float) -> None:
+    if metrics is not None:
+        metrics[key] = metrics.get(key, 0) + value
+
+
 def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
-                 json_mode: bool = True
+                 json_mode: bool = True, metrics: dict | None = None
                  ) -> tuple[str, str, int, int]:
     """Returns (text, model, input_tokens, output_tokens). Raises on error."""
     base = cfg["ollama_url"].rstrip("/")
@@ -260,6 +454,7 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
         "options": {
             "temperature": 0.3,
             "num_predict": num_predict,
+            "think": False,
             # Ollama defaults num_ctx to 2048, which truncates these prompts;
             # 8192 keeps enough room for coaching context without making local
             # models reprocess a very large window on every key-moment call.
@@ -277,6 +472,11 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
         )
     data = r.json()
     text = data["message"]["content"]
+    _add_metric(metrics, "ollama_calls", 1)
+    _add_metric(metrics, "ollama_prompt_eval_count", data.get("prompt_eval_count", 0))
+    _add_metric(metrics, "ollama_eval_count", data.get("eval_count", 0))
+    _add_metric(metrics, "ollama_prompt_eval_duration", data.get("prompt_eval_duration", 0))
+    _add_metric(metrics, "ollama_eval_duration", data.get("eval_duration", 0))
     return text, model, data.get("prompt_eval_count", 0), data.get("eval_count", 0)
 
 
@@ -400,13 +600,15 @@ def _call_gemini_model(prompt: str, api_key: str, model: str, system: str,
 
 
 def _call_provider(prompt: str, cfg: dict, system: str, budget: int,
-                   json_mode: bool = True) -> tuple[str, str, int, int]:
+                   json_mode: bool = True, metrics: dict | None = None
+                   ) -> tuple[str, str, int, int]:
     provider = cfg.get("coach_provider", "ollama")
     if provider == "claude":
         return _call_claude(prompt, cfg, system, max_tokens=budget)
     if provider == "gemini":
         return _call_gemini(prompt, cfg, system, max_tokens=budget, json_mode=json_mode)
-    return _call_ollama(prompt, cfg, system, num_predict=budget, json_mode=json_mode)
+    return _call_ollama(prompt, cfg, system, num_predict=budget, json_mode=json_mode,
+                        metrics=metrics)
 
 
 def _chat_prompt(game: dict, user_color: str, question: str, ply: int,
@@ -618,7 +820,8 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
         raise ValueError("run engine analysis first")
 
     user_color = game.get("user_color") or "white"
-    moments = engine.key_moments(game["moves"], user_color, max_negative=7, max_positive=3)
+    provider = cfg.get("coach_provider", "ollama")
+    moments = _select_moments(game["moves"], user_color, provider)
     fen_by_ply = {m["ply"]: m["fen_after"] for m in game["moves"]}
     before_fens = [fen_by_ply.get(m["ply"] - 1, chess.STARTING_FEN) for m in moments]
 
@@ -628,16 +831,18 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
         progress["done"] = 0
         progress["label"] = "Gathering engine candidate moves…"
 
-    candidates = (engine.batch_candidates(before_fens, multipv=cfg.get("engine_multipv", 3))
-                  if moments else {})
+    metrics = {} if provider == "ollama" else None
+    started_at = time.perf_counter()
+    candidates = (
+        _cached_batch_candidates(before_fens, cfg, metrics)
+        if provider == "ollama"
+        else (engine.batch_candidates(before_fens, multipv=cfg.get("engine_multipv", 3))
+              if moments else {})
+    )
     if progress is not None:
         progress["done"] = 1
 
-    def call(prompt: str, system: str, budget: int) -> tuple[str, str, int, int]:
-        return _call_provider(prompt, cfg, system, budget)
-
     in_tok = out_tok = 0
-    provider = cfg.get("coach_provider", "ollama")
     model = {
         "claude": cfg.get("claude_model"),
         "gemini": cfg.get("gemini_model"),
@@ -645,18 +850,46 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
 
     # One focused call per moment. Ply / moment_type are OURS — never the model's.
     key_moments_out: list[dict] = []
+    def call(prompt: str, system: str, budget: int) -> tuple[str, str, int, int]:
+        return _call_provider(prompt, cfg, system, budget, metrics=metrics)
+
     for idx, m in enumerate(moments):
         if progress is not None:
             progress["label"] = f"Analyzing key moment {idx + 1} of {len(moments)}…"
         before = fen_by_ply.get(m["ply"] - 1, chess.STARTING_FEN)
-        block = _moment_block(m, before, user_color, candidates.get(before))
-        text, model, ti, to = call(_moment_user_prompt(game, user_color, block), MOMENT_SYSTEM, 1500)
+        moment_candidates = candidates.get(before) or []
+        if provider == "ollama":
+            budget = 700
+            cache_key = _moment_cache_key(game_id, m, model, moment_candidates, budget)
+            with db.connect() as conn:
+                cached = db.get_moment_cache(conn, cache_key)
+            if cached:
+                parsed = cached["output"]
+                ti = cached["input_tokens"]
+                to = cached["output_tokens"]
+                model = cached["model"] or model
+                _add_metric(metrics, "moment_cache_hits", 1)
+            else:
+                _add_metric(metrics, "moment_cache_misses", 1)
+                fallback = _deterministic_moment_output(m, user_color)
+                text, model, ti, to = call(
+                    _offline_moment_prompt(game, user_color, m, before, moment_candidates),
+                    LOCAL_MOMENT_SYSTEM,
+                    budget,
+                )
+                parsed = _parse_moment_json(text, fallback)
+                with db.connect() as conn:
+                    db.save_moment_cache(conn, cache_key, game_id, m["ply"], parsed, model, ti, to)
+                    conn.commit()
+        else:
+            block = _moment_block(m, before, user_color, moment_candidates)
+            text, model, ti, to = call(_moment_user_prompt(game, user_color, block), MOMENT_SYSTEM, 1500)
+            try:
+                parsed = _parse_json(text)
+            except Exception:
+                parsed = {}
         in_tok += ti
         out_tok += to
-        try:
-            parsed = _parse_json(text)
-        except Exception:
-            parsed = {}
         explanation = (parsed.get("explanation") or parsed.get("analysis")
                        or parsed.get("note") or parsed.get("comment") or "")
         title = (parsed.get("title") or parsed.get("label") or m["san"])
@@ -677,19 +910,34 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
         is_user = (user_color == "white") == (mv["ply"] % 2 == 1)
         if is_user and mv["classification"] in counts:
             counts[mv["classification"]] += 1
-    movetext = str(chess.pgn.read_game(io.StringIO(game["pgn"])).mainline_moves())
-    text, model, ti, to = call(
-        _summary_user_prompt(game, user_color, key_moments_out, counts, movetext),
-        SUMMARY_SYSTEM, 1500)
-    in_tok += ti
-    out_tok += to
+    if provider == "ollama":
+        cache_key = _summary_cache_key(game_id, model, key_moments_out)
+        with db.connect() as conn:
+            cached_summary = db.get_summary_cache(conn, cache_key)
+        if cached_summary:
+            summ = cached_summary["output"]
+            model = cached_summary["model"] or model
+            _add_metric(metrics, "summary_cache_hits", 1)
+        else:
+            _add_metric(metrics, "summary_cache_misses", 1)
+            summ = _deterministic_summary(game, user_color, key_moments_out, counts)
+            with db.connect() as conn:
+                db.save_summary_cache(conn, cache_key, game_id, summ, model, 0, 0)
+                conn.commit()
+    else:
+        movetext = str(chess.pgn.read_game(io.StringIO(game["pgn"])).mainline_moves())
+        text, model, ti, to = call(
+            _summary_user_prompt(game, user_color, key_moments_out, counts, movetext),
+            SUMMARY_SYSTEM, 1500)
+        in_tok += ti
+        out_tok += to
+        try:
+            summ = _normalize(_parse_json(text))
+        except Exception:
+            summ = {"opening_summary": "", "themes": [], "takeaways": []}
     if progress is not None:
         progress["done"] = progress["total"]
         progress["label"] = "Done"
-    try:
-        summ = _normalize(_parse_json(text))
-    except Exception:
-        summ = {"opening_summary": "", "themes": [], "takeaways": []}
 
     commentary = {
         "opening_summary": summ["opening_summary"],
@@ -697,6 +945,9 @@ def coach_game(game_id: int, progress: dict | None = None) -> dict:
         "themes": summ["themes"],
         "takeaways": summ["takeaways"],
     }
+    if metrics is not None:
+        metrics["coach_wall_time_ms"] = round((time.perf_counter() - started_at) * 1000)
+        commentary["performance"] = metrics
     with db.connect() as conn:
         db.save_coach(conn, game_id, commentary, model, in_tok, out_tok)
         conn.commit()
