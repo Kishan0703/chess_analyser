@@ -6,6 +6,39 @@ import pytest
 from backend import db, play
 
 
+def test_bot_play_api_starts_game(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    monkeypatch.setattr(app_module.play, "new_game", lambda player_color, difficulty, advanced=None: {
+        "id": 12, "player_color": player_color, "difficulty": difficulty, "advanced": advanced or {},
+        "fen": chess.STARTING_FEN, "legal_moves": [], "status": "active", "result": "*", "pgn": "",
+    })
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games", json={"player_color": "white", "difficulty": "club"})
+
+    assert response.status_code == 200
+    assert response.json()["id"] == 12
+    assert response.json()["difficulty"] == "club"
+
+
+def test_bot_play_api_maps_illegal_move_to_400(monkeypatch):
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    def raise_illegal(*args, **kwargs):
+        raise ValueError("illegal move")
+
+    monkeypatch.setattr(app_module.play, "apply_player_move", raise_illegal)
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games/12/move", json={"from": "e2", "to": "e5"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "illegal move"
+
+
 def make_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -84,6 +117,33 @@ def test_new_game_creates_white_to_move_session(monkeypatch):
     assert result["difficulty"] == "club"
     assert result["status"] == "active"
     assert result["fen"] == chess.STARTING_FEN
+    assert result["legal_moves"]
+
+
+def test_get_game_returns_serialized_persisted_session(monkeypatch):
+    conn = make_conn()
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": "",
+        "fen": chess.STARTING_FEN,
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.get_game(bot_game_id)
+
+    assert result["id"] == bot_game_id
+    assert result["fen"] == chess.STARTING_FEN
+    assert result["status"] == "active"
     assert result["legal_moves"]
 
 

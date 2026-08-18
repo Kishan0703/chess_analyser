@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import chesscom, coach, db, engine, settings
+from . import chesscom, coach, db, engine, play, settings
 
 app = FastAPI(title="ChessCoach")
 db.init_db()
@@ -51,6 +51,18 @@ class SettingsUpdate(BaseModel):
     coach_provider: str | None = None
     ollama_url: str | None = None
     ollama_model: str | None = None
+
+
+class BotGameCreate(BaseModel):
+    player_color: str = "white"
+    difficulty: str = "club"
+    advanced: dict | None = None
+
+
+class BotMoveRequest(BaseModel):
+    from_square: str = Field(alias="from")
+    to: str
+    promotion: str | None = None
 
 
 @app.get("/api/settings")
@@ -336,6 +348,45 @@ def chat_about_game(game_id: int, req: ChatRequest):
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"coach error: {e}")
+
+
+@app.post("/api/play/bot/games")
+def create_bot_game(req: BotGameCreate):
+    try:
+        return play.new_game(req.player_color, req.difficulty, req.advanced)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"bot game error: {e}")
+
+
+@app.get("/api/play/bot/games/{bot_game_id}")
+def get_bot_game(bot_game_id: int):
+    try:
+        return play.get_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/move")
+def play_bot_move(bot_game_id: int, req: BotMoveRequest):
+    try:
+        return play.apply_player_move(
+            bot_game_id,
+            {"from": req.from_square, "to": req.to, "promotion": req.promotion},
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"bot move error: {e}")
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/save")
+def save_bot_game(bot_game_id: int):
+    try:
+        return play.save_to_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # Serve the built frontend (must be mounted last so /api wins)

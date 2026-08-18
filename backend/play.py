@@ -162,6 +162,14 @@ def new_game(player_color: str, difficulty: str, advanced: dict | None = None,
     return state
 
 
+def get_game(bot_game_id: int) -> dict:
+    with db.connect() as conn:
+        session = db.get_bot_game(conn, bot_game_id)
+    if session is None:
+        raise ValueError(f"bot game {bot_game_id} not found")
+    return serialize_board_state(session, _board_from_session(session))
+
+
 def save_to_game(bot_game_id: int) -> dict:
     with db.connect() as conn:
         session = db.get_bot_game(conn, bot_game_id)
