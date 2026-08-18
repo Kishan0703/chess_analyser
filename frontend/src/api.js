@@ -27,6 +27,17 @@ export const api = {
   bestLine: (id, ply) => request(`/api/games/${id}/bestline/${ply}`),
   positionAnalysis: (id, ply) => request(`/api/games/${id}/position/${ply}`),
   positionExplanation: (id, ply) => request(`/api/games/${id}/position/${ply}/explanation`),
+  createBotGame: (payload) =>
+    request('/api/play/bot/games', { method: 'POST', body: JSON.stringify(payload) }),
+  getBotGame: (id) => request(`/api/play/bot/games/${id}`),
+  playBotMove: (id, move) =>
+    request(`/api/play/bot/games/${id}/move`, { method: 'POST', body: JSON.stringify(move) }),
+  saveBotGame: (id) =>
+    request(`/api/play/bot/games/${id}/save`, { method: 'POST' }),
+  resignBotGame: (id) =>
+    request(`/api/play/bot/games/${id}/resign`, { method: 'POST' }),
+  offerBotDraw: (id) =>
+    request(`/api/play/bot/games/${id}/draw-offer`, { method: 'POST' }),
   chat: (id, question, ply, history) =>
     request(`/api/games/${id}/chat`, {
       method: 'POST',

@@ -89,6 +89,21 @@ CREATE TABLE IF NOT EXISTS summary_cache (
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_summary_cache_game ON summary_cache(game_id);
+
+CREATE TABLE IF NOT EXISTS bot_games (
+    id INTEGER PRIMARY KEY,
+    player_color TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    advanced_json TEXT NOT NULL,
+    pgn TEXT NOT NULL DEFAULT '',
+    fen TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    result TEXT NOT NULL DEFAULT '*',
+    saved_game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_bot_games_status ON bot_games(status, updated_at);
 """
 
 
@@ -102,6 +117,51 @@ def connect() -> sqlite3.Connection:
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+
+
+def create_bot_game(conn: sqlite3.Connection, payload: dict) -> int:
+    cur = conn.execute(
+        """INSERT INTO bot_games
+           (player_color, difficulty, advanced_json, pgn, fen, status, result)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (
+            payload["player_color"],
+            payload["difficulty"],
+            json.dumps(payload["advanced"], sort_keys=True),
+            payload.get("pgn", ""),
+            payload["fen"],
+            payload.get("status", "active"),
+            payload.get("result", "*"),
+        ),
+    )
+    return cur.lastrowid
+
+
+def get_bot_game(conn: sqlite3.Connection, bot_game_id: int) -> dict | None:
+    row = conn.execute("SELECT * FROM bot_games WHERE id = ?", (bot_game_id,)).fetchone()
+    if row is None:
+        return None
+    data = dict(row)
+    data["advanced"] = json.loads(data.pop("advanced_json"))
+    return data
+
+
+def update_bot_game(conn: sqlite3.Connection, bot_game_id: int, payload: dict) -> None:
+    conn.execute(
+        """UPDATE bot_games
+           SET pgn = ?, fen = ?, status = ?, result = ?, updated_at = datetime('now')
+           WHERE id = ?""",
+        (payload["pgn"], payload["fen"], payload["status"], payload["result"], bot_game_id),
+    )
+
+
+def mark_bot_game_saved(conn: sqlite3.Connection, bot_game_id: int, saved_game_id: int) -> None:
+    conn.execute(
+        """UPDATE bot_games
+           SET saved_game_id = ?, updated_at = datetime('now')
+           WHERE id = ?""",
+        (saved_game_id, bot_game_id),
+    )
 
 
 def insert_game(conn: sqlite3.Connection, g: dict) -> int | None:
@@ -120,6 +180,8 @@ def insert_game(conn: sqlite3.Connection, g: dict) -> int | None:
 
 
 def _apply_user_color(game: dict, username: str | None) -> dict:
+    if game.get("source") == "local-bot":
+        return game
     if not username:
         return game
     name = username.strip().lower()
@@ -137,14 +199,14 @@ def list_games(conn: sqlite3.Connection, limit: int = 200,
     params: list = []
     where = ""
     if username:
-        where = "WHERE lower(g.white) = ? OR lower(g.black) = ?"
+        where = "WHERE lower(g.white) = ? OR lower(g.black) = ? OR g.source = 'local-bot'"
         name = username.strip().lower()
         params.extend([name, name])
     params.append(limit)
     rows = conn.execute(
         f"""SELECT g.id, g.white, g.black, g.white_elo, g.black_elo, g.result, g.eco,
                   g.opening, g.time_control, g.played_at, g.user_color, g.engine_analyzed,
-                  g.source_url,
+                  g.source, g.source_url,
                   EXISTS(SELECT 1 FROM analyses a WHERE a.game_id = g.id) AS coached
            FROM games g {where} ORDER BY g.played_at DESC LIMIT ?""",
         params,
@@ -181,7 +243,7 @@ def get_profile(conn: sqlite3.Connection, username: str | None = None,
     user_where = ""
     user_params: list = []
     if name:
-        user_where = "WHERE lower(g.white) = ? OR lower(g.black) = ?"
+        user_where = "WHERE lower(g.white) = ? OR lower(g.black) = ? OR g.source = 'local-bot'"
         user_params = [name, name]
 
     games = [dict(r) for r in conn.execute(
@@ -212,6 +274,8 @@ def get_profile(conn: sqlite3.Connection, username: str | None = None,
     analyzed_game_ids = [g["id"] for g in analyzed_games]
 
     def user_color_for(g: dict) -> str | None:
+        if g.get("source") == "local-bot":
+            return g.get("user_color")
         if name == (g.get("white") or "").lower():
             return "white"
         if name == (g.get("black") or "").lower():

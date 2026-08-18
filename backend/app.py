@@ -6,9 +6,9 @@ import chess
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt, field_validator
 
-from . import chesscom, coach, db, engine, settings
+from . import chesscom, coach, db, engine, play, settings
 
 app = FastAPI(title="ChessCoach")
 db.init_db()
@@ -51,6 +51,34 @@ class SettingsUpdate(BaseModel):
     coach_provider: str | None = None
     ollama_url: str | None = None
     ollama_model: str | None = None
+
+
+class BotAdvancedSettings(BaseModel):
+    label: str | None = None
+    skill_level: StrictInt | None = Field(default=None, ge=0, le=20)
+    move_time_ms: StrictInt | None = Field(default=None, ge=10, le=5000)
+    randomness: float | None = Field(default=None, ge=0, le=1)
+
+    @field_validator("randomness", mode="before")
+    @classmethod
+    def validate_randomness_type(cls, value):
+        if value is None:
+            return value
+        if type(value) not in {int, float}:
+            raise ValueError("randomness must be a number")
+        return value
+
+
+class BotGameCreate(BaseModel):
+    player_color: str = "white"
+    difficulty: str = "club"
+    advanced: BotAdvancedSettings | None = None
+
+
+class BotMoveRequest(BaseModel):
+    from_square: str = Field(alias="from")
+    to: str
+    promotion: str | None = None
 
 
 @app.get("/api/settings")
@@ -336,6 +364,62 @@ def chat_about_game(game_id: int, req: ChatRequest):
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"coach error: {e}")
+
+
+@app.post("/api/play/bot/games")
+def create_bot_game(req: BotGameCreate):
+    try:
+        advanced = req.advanced.model_dump(exclude_none=True, exclude_unset=True) if req.advanced else None
+        return play.new_game(req.player_color, req.difficulty, advanced)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"bot game error: {e}")
+
+
+@app.get("/api/play/bot/games/{bot_game_id}")
+def get_bot_game(bot_game_id: int):
+    try:
+        return play.get_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/move")
+def play_bot_move(bot_game_id: int, req: BotMoveRequest):
+    try:
+        return play.apply_player_move(
+            bot_game_id,
+            {"from": req.from_square, "to": req.to, "promotion": req.promotion},
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"bot move error: {e}")
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/save")
+def save_bot_game(bot_game_id: int):
+    try:
+        return play.save_to_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/resign")
+def resign_bot_game(bot_game_id: int):
+    try:
+        return play.resign_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/draw-offer")
+def offer_bot_draw(bot_game_id: int):
+    try:
+        return play.offer_draw(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 # Serve the built frontend (must be mounted last so /api wins)

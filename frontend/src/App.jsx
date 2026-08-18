@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import GameList from './components/GameList.jsx'
 import GameView from './components/GameView.jsx'
+import BotPlay from './components/BotPlay.jsx'
 import Profile from './components/Profile.jsx'
 import Settings from './components/Settings.jsx'
 import ThemePicker from './components/ThemePicker.jsx'
@@ -9,6 +10,7 @@ const NAV_ITEMS = [
   { view: { name: 'list' }, id: 'list', icon: '01', label: 'Your games' },
   { view: { name: 'profile' }, id: 'profile', icon: '02', label: 'Training profile' },
   { view: { name: 'settings' }, id: 'settings', icon: '03', label: 'Settings' },
+  { view: { name: 'play' }, id: 'play', icon: '04', label: 'Play vs Bot' },
 ]
 
 function viewFromLocation() {
@@ -16,6 +18,7 @@ function viewFromLocation() {
   const [name, id] = hash.split('/')
   if (name === 'profile') return { name: 'profile' }
   if (name === 'settings') return { name: 'settings' }
+  if (name === 'play') return { name: 'play' }
   if (name === 'game' && id) return { name: 'game', id: decodeURIComponent(id) }
   return { name: 'list' }
 }
@@ -23,6 +26,7 @@ function viewFromLocation() {
 function hashForView(view) {
   if (view.name === 'profile') return '#/profile'
   if (view.name === 'settings') return '#/settings'
+  if (view.name === 'play') return '#/play'
   if (view.name === 'game') return `#/game/${encodeURIComponent(view.id)}`
   return '#/games'
 }
@@ -103,6 +107,9 @@ export default function App() {
             <Profile onOpenGame={(id) => navigate({ name: 'game', id })} />
           )}
           {view.name === 'settings' && <Settings />}
+          {view.name === 'play' && (
+            <BotPlay onOpenGame={(id) => navigate({ name: 'game', id })} />
+          )}
         </div>
       </main>
     </div>
