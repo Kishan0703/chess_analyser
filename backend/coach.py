@@ -454,9 +454,9 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
             "temperature": 0.3,
             "num_predict": num_predict,
             "think": False,
-            # Ollama defaults num_ctx to 2048, which truncates these prompts;
-            # 16384 fits comfortably on a 16GB GPU.
-            "num_ctx": 16384,
+            # Compact local prompts should stay below this ceiling; higher
+            # contexts make laptop prompt processing noticeably slower.
+            "num_ctx": 8192,
         },
     }
     if json_mode:

@@ -30,3 +30,7 @@ def test_save_removes_legacy_secrets_and_only_reads_environment_secrets(tmp_path
     assert persisted["chesscom_username"] == "after"
     assert saved["anthropic_api_key"] == "from-environment"
     assert saved["gemini_api_key"] == ""
+
+
+def test_default_local_coach_model_is_laptop_sized():
+    assert settings.DEFAULTS["ollama_model"] == "qwen3:8b"

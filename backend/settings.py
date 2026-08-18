@@ -32,7 +32,7 @@ DEFAULTS = {
     # Coach provider: "ollama", "claude", or "gemini"
     "coach_provider": "ollama",
     "ollama_url": "http://localhost:11434",
-    "ollama_model": "qwen2.5:14b",
+    "ollama_model": "qwen3:8b",
 }
 
 PERSISTED_DEFAULTS = {
