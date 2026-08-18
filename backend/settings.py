@@ -40,11 +40,17 @@ PERSISTED_DEFAULTS = {
 }
 
 
-def _load_file_settings() -> dict:
+def _load_raw_file_settings() -> dict:
     if SETTINGS_PATH.exists():
         data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
-        persisted = {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
-        return {**DEFAULTS, **persisted}
+        return {key: value for key, value in data.items() if key in PERSISTED_DEFAULTS}
+    return {}
+
+
+def _load_file_settings() -> dict:
+    data = _load_raw_file_settings()
+    if data:
+        return {**DEFAULTS, **data}
     return dict(DEFAULTS)
 
 

@@ -84,7 +84,7 @@ export default function Settings() {
             <strong>Ollama setup (one time):</strong>
             <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
               <li>Install from <strong>ollama.com</strong></li>
-              <li>Open a terminal and run: <code>ollama pull qwen2.5:14b</code></li>
+              <li>Open a terminal and run: <code>ollama pull qwen3:8b</code></li>
               <li>Ollama runs automatically in the background after install.</li>
             </ol>
           </div>
@@ -98,12 +98,12 @@ export default function Settings() {
           <label>
             Model
             <input
-              value={cfg.ollama_model || 'qwen2.5:14b'}
+              value={cfg.ollama_model || 'qwen3:8b'}
               onChange={(e) => setCfg({ ...cfg, ollama_model: e.target.value })}
-              placeholder="qwen2.5:14b"
+              placeholder="qwen3:8b"
             />
             <span className="status-line">
-              qwen2.5:14b recommended (best grounding) · also works: llama3.1:8b, gemma2:9b, mistral
+              qwen3:8b recommended (best grounding) · also works: llama3.1:8b, gemma2:9b, mistral
             </span>
           </label>
         </>

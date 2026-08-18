@@ -114,7 +114,7 @@ COACH_PROVIDER=ollama
 Then pull a local model:
 
 ```bash
-ollama pull qwen2.5:14b
+ollama pull qwen3:8b
 ```
 
 Runtime `.env` values override `settings.json`. Secrets are not written back into
