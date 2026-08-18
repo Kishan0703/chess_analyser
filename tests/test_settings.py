@@ -32,5 +32,22 @@ def test_save_removes_legacy_secrets_and_only_reads_environment_secrets(tmp_path
     assert saved["gemini_api_key"] == ""
 
 
+def test_saved_coach_provider_wins_over_dotenv_default(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.json"
+    env_path = tmp_path / ".env"
+    settings_path.write_text(
+        json.dumps({"coach_provider": "ollama", "ollama_model": "qwen3:8b"}),
+        encoding="utf-8",
+    )
+    env_path.write_text("COACH_PROVIDER=gemini\n", encoding="utf-8")
+
+    monkeypatch.setattr(settings, "SETTINGS_PATH", settings_path)
+    monkeypatch.setattr(settings, "ENV_PATH", env_path)
+    monkeypatch.delenv("COACH_PROVIDER", raising=False)
+    monkeypatch.delenv("CHESSCOACH_PROVIDER", raising=False)
+
+    assert settings.load()["coach_provider"] == "ollama"
+
+
 def test_default_local_coach_model_is_laptop_sized():
     assert settings.DEFAULTS["ollama_model"] == "qwen3:8b"
