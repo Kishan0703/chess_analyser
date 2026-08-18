@@ -256,12 +256,14 @@ def _call_ollama(prompt: str, cfg: dict, system: str, num_predict: int = 1800,
             {"role": "user", "content": prompt},
         ],
         "stream": False,
+        "think": False,
         "options": {
             "temperature": 0.3,
             "num_predict": num_predict,
             # Ollama defaults num_ctx to 2048, which truncates these prompts;
-            # 16384 fits comfortably on a 16GB GPU.
-            "num_ctx": 16384,
+            # 8192 keeps enough room for coaching context without making local
+            # models reprocess a very large window on every key-moment call.
+            "num_ctx": 8192,
         },
     }
     if json_mode:
