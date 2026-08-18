@@ -155,6 +155,15 @@ def update_bot_game(conn: sqlite3.Connection, bot_game_id: int, payload: dict) -
     )
 
 
+def mark_bot_game_saved(conn: sqlite3.Connection, bot_game_id: int, saved_game_id: int) -> None:
+    conn.execute(
+        """UPDATE bot_games
+           SET saved_game_id = ?, updated_at = datetime('now')
+           WHERE id = ?""",
+        (saved_game_id, bot_game_id),
+    )
+
+
 def insert_game(conn: sqlite3.Connection, g: dict) -> int | None:
     """Insert a game; returns new id, or None if the source_url already exists."""
     try:

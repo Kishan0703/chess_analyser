@@ -162,26 +162,37 @@ def new_game(player_color: str, difficulty: str, advanced: dict | None = None,
     return state
 
 
-def _save_finished_game(conn, session: dict) -> None:
-    if session.get("saved_game_id") is not None:
-        return
-    player_is_white = session["player_color"] == "white"
-    game_id = db.insert_game(conn, {
-        "source": "local-bot",
-        "source_url": None,
-        "pgn": session["pgn"],
-        "white": "Player" if player_is_white else "Stockfish",
-        "black": "Stockfish" if player_is_white else "Player",
-        "white_elo": None,
-        "black_elo": None,
-        "result": session["result"],
-        "eco": None,
-        "opening": None,
-        "time_control": None,
-        "played_at": None,
-        "user_color": session["player_color"],
-    })
-    conn.execute("UPDATE bot_games SET saved_game_id = ? WHERE id = ?", (game_id, session["id"]))
+def save_to_game(bot_game_id: int) -> dict:
+    with db.connect() as conn:
+        session = db.get_bot_game(conn, bot_game_id)
+        if session is None:
+            raise ValueError("bot game not found")
+        if session.get("saved_game_id"):
+            return {"game_id": session["saved_game_id"]}
+
+        game_id = db.insert_game(conn, {
+            "source": "local-bot",
+            "source_url": f"local-bot:{bot_game_id}",
+            "pgn": session["pgn"],
+            "white": "You" if session["player_color"] == "white" else "ChessCoach Bot",
+            "black": "ChessCoach Bot" if session["player_color"] == "white" else "You",
+            "white_elo": None,
+            "black_elo": None,
+            "result": session["result"],
+            "eco": None,
+            "opening": "Bot practice",
+            "time_control": "offline",
+            "played_at": None,
+            "user_color": session["player_color"],
+        })
+        if game_id is None:
+            row = conn.execute(
+                "SELECT id FROM games WHERE source_url = ?", (f"local-bot:{bot_game_id}",)
+            ).fetchone()
+            game_id = row["id"]
+        db.mark_bot_game_saved(conn, bot_game_id, game_id)
+        conn.commit()
+        return {"game_id": game_id}
 
 
 def apply_player_move(bot_game_id: int, move: dict,
@@ -224,8 +235,6 @@ def apply_player_move(bot_game_id: int, move: dict,
             "result": result,
         })
         db.update_bot_game(conn, bot_game_id, session)
-        if status == "finished":
-            _save_finished_game(conn, session)
 
     state = serialize_board_state(session, board)
     state["last_player_move"] = last_player_move

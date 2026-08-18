@@ -200,3 +200,32 @@ def test_apply_player_move_rebuilds_pgn_history_for_draw_claim(monkeypatch):
     assert result["status"] == "finished"
     assert result["result"] == "1/2-1/2"
     assert result["last_bot_move"] is None
+
+
+def test_save_to_game_creates_local_bot_game_for_analysis(monkeypatch):
+    conn = make_conn()
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": '[Event "ChessCoach Bot Game"]\n\n1. e4 e5 *',
+        "fen": "after",
+        "status": "finished",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.save_to_game(bot_game_id)
+
+    assert result["game_id"] > 0
+    saved = db.get_game(conn, result["game_id"], username="You")
+    assert saved["source"] == "local-bot"
+    assert saved["white"] == "You"
+    assert saved["black"] == "ChessCoach Bot"
+    assert saved["user_color"] == "white"
