@@ -289,3 +289,51 @@ def test_save_to_game_creates_local_bot_game_for_analysis(monkeypatch):
     assert saved["white"] == "You"
     assert saved["black"] == "ChessCoach Bot"
     assert saved["user_color"] == "white"
+
+
+def test_save_to_game_rejects_active_bot_game(monkeypatch):
+    conn = make_conn()
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": "1. e4 e5 *",
+        "fen": "after",
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    with pytest.raises(ValueError, match="bot game is not finished"):
+        play.save_to_game(bot_game_id)
+
+
+def test_local_bot_games_keep_saved_user_color_with_configured_username():
+    conn = make_conn()
+    game_id = db.insert_game(conn, {
+        "source": "local-bot",
+        "source_url": "local-bot:test",
+        "pgn": "1. e4 e5 *",
+        "white": "You",
+        "black": "ChessCoach Bot",
+        "white_elo": None,
+        "black_elo": None,
+        "result": "*",
+        "eco": None,
+        "opening": "Bot practice",
+        "time_control": "offline",
+        "played_at": None,
+        "user_color": "white",
+    })
+
+    game = db.get_game(conn, game_id, username="ConfiguredChesscomUser")
+    games = db.list_games(conn, username="ConfiguredChesscomUser")
+
+    assert game["user_color"] == "white"
+    assert any(g["id"] == game_id and g["user_color"] == "white" for g in games)

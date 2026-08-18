@@ -180,6 +180,8 @@ def insert_game(conn: sqlite3.Connection, g: dict) -> int | None:
 
 
 def _apply_user_color(game: dict, username: str | None) -> dict:
+    if game.get("source") == "local-bot":
+        return game
     if not username:
         return game
     name = username.strip().lower()
@@ -197,14 +199,14 @@ def list_games(conn: sqlite3.Connection, limit: int = 200,
     params: list = []
     where = ""
     if username:
-        where = "WHERE lower(g.white) = ? OR lower(g.black) = ?"
+        where = "WHERE lower(g.white) = ? OR lower(g.black) = ? OR g.source = 'local-bot'"
         name = username.strip().lower()
         params.extend([name, name])
     params.append(limit)
     rows = conn.execute(
         f"""SELECT g.id, g.white, g.black, g.white_elo, g.black_elo, g.result, g.eco,
                   g.opening, g.time_control, g.played_at, g.user_color, g.engine_analyzed,
-                  g.source_url,
+                  g.source, g.source_url,
                   EXISTS(SELECT 1 FROM analyses a WHERE a.game_id = g.id) AS coached
            FROM games g {where} ORDER BY g.played_at DESC LIMIT ?""",
         params,

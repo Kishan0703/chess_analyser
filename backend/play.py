@@ -177,6 +177,8 @@ def save_to_game(bot_game_id: int) -> dict:
             raise ValueError("bot game not found")
         if session.get("saved_game_id"):
             return {"game_id": session["saved_game_id"]}
+        if session["status"] != "finished":
+            raise ValueError("bot game is not finished")
 
         game_id = db.insert_game(conn, {
             "source": "local-bot",
