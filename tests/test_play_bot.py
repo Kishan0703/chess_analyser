@@ -67,6 +67,35 @@ def test_bot_play_api_rejects_coerced_advanced_types():
     assert response.status_code == 422
 
 
+def test_bot_play_api_accepts_integer_randomness():
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games", json={
+        "player_color": "white",
+        "difficulty": "master",
+        "advanced": {"randomness": 0},
+    })
+
+    assert response.status_code == 200
+    assert response.json()["advanced"]["randomness"] == 0.0
+
+
+def test_bot_play_api_rejects_boolean_randomness():
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games", json={
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": {"randomness": True},
+    })
+
+    assert response.status_code == 422
+
+
 def make_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row

@@ -6,7 +6,7 @@ import chess
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictFloat, StrictInt
+from pydantic import BaseModel, Field, StrictInt, field_validator
 
 from . import chesscom, coach, db, engine, play, settings
 
@@ -57,7 +57,16 @@ class BotAdvancedSettings(BaseModel):
     label: str | None = None
     skill_level: StrictInt | None = Field(default=None, ge=0, le=20)
     move_time_ms: StrictInt | None = Field(default=None, ge=10, le=5000)
-    randomness: StrictFloat | None = Field(default=None, ge=0, le=1)
+    randomness: float | None = Field(default=None, ge=0, le=1)
+
+    @field_validator("randomness", mode="before")
+    @classmethod
+    def validate_randomness_type(cls, value):
+        if value is None:
+            return value
+        if type(value) not in {int, float}:
+            raise ValueError("randomness must be a number")
+        return value
 
 
 class BotGameCreate(BaseModel):
