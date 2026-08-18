@@ -6,7 +6,7 @@ import chess
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictFloat, StrictInt
 
 from . import chesscom, coach, db, engine, play, settings
 
@@ -55,9 +55,9 @@ class SettingsUpdate(BaseModel):
 
 class BotAdvancedSettings(BaseModel):
     label: str | None = None
-    skill_level: int = Field(ge=0, le=20)
-    move_time_ms: int = Field(ge=10, le=5000)
-    randomness: float = Field(ge=0, le=1)
+    skill_level: StrictInt | None = Field(default=None, ge=0, le=20)
+    move_time_ms: StrictInt | None = Field(default=None, ge=10, le=5000)
+    randomness: StrictFloat | None = Field(default=None, ge=0, le=1)
 
 
 class BotGameCreate(BaseModel):
@@ -360,7 +360,7 @@ def chat_about_game(game_id: int, req: ChatRequest):
 @app.post("/api/play/bot/games")
 def create_bot_game(req: BotGameCreate):
     try:
-        advanced = req.advanced.model_dump(exclude_none=True) if req.advanced else None
+        advanced = req.advanced.model_dump(exclude_none=True, exclude_unset=True) if req.advanced else None
         return play.new_game(req.player_color, req.difficulty, advanced)
     except ValueError as e:
         raise HTTPException(400, str(e))

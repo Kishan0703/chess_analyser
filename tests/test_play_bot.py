@@ -53,6 +53,20 @@ def test_bot_play_api_rejects_invalid_advanced_settings():
     assert response.status_code == 422
 
 
+def test_bot_play_api_rejects_coerced_advanced_types():
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games", json={
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": {"skill_level": "8"},
+    })
+
+    assert response.status_code == 422
+
+
 def make_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -147,6 +161,35 @@ def test_new_game_rejects_out_of_range_advanced_settings(monkeypatch):
         play.new_game("white", "club", {"skill_level": 99})
 
     assert conn.execute("SELECT COUNT(*) AS c FROM bot_games").fetchone()["c"] == 0
+
+
+def test_new_game_rejects_coerced_advanced_types(monkeypatch):
+    conn = make_conn()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    with pytest.raises(ValueError, match="invalid advanced settings"):
+        play.new_game("white", "club", {"skill_level": "8"})
+
+
+def test_new_game_preserves_preset_values_for_partial_advanced_override(monkeypatch):
+    conn = make_conn()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.new_game("white", "club", {"skill_level": 12})
+
+    assert result["advanced"]["skill_level"] == 12
+    assert result["advanced"]["move_time_ms"] == play.DIFFICULTY_PRESETS["club"]["move_time_ms"]
+    assert result["advanced"]["randomness"] == play.DIFFICULTY_PRESETS["club"]["randomness"]
 
 
 def test_get_game_returns_serialized_persisted_session(monkeypatch):

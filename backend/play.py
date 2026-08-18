@@ -24,11 +24,14 @@ def _validated_advanced(difficulty: str, advanced: dict | None = None) -> dict:
     if advanced is not None:
         config.update(advanced)
     try:
-        skill_level = int(config["skill_level"])
-        move_time_ms = int(config["move_time_ms"])
-        randomness = float(config["randomness"])
-    except (KeyError, TypeError, ValueError) as e:
+        skill_level = config["skill_level"]
+        move_time_ms = config["move_time_ms"]
+        randomness = config["randomness"]
+    except KeyError as e:
         raise ValueError("invalid advanced settings") from e
+    if type(skill_level) is not int or type(move_time_ms) is not int \
+            or type(randomness) not in {int, float}:
+        raise ValueError("invalid advanced settings")
     if not 0 <= skill_level <= 20:
         raise ValueError("skill_level must be between 0 and 20")
     if not 10 <= move_time_ms <= 5000:

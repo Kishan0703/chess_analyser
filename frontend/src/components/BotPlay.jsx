@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { api } from '../api.js'
-import { buildBotMovePayload } from '../botPlayMoves.js'
+import { createBotDropHandler } from '../botPlayMoves.js'
 
 const PRESETS = {
   beginner: { label: 'Beginner', skill_level: 2, move_time_ms: 80, randomness: 0.55 },
@@ -33,6 +33,10 @@ export default function BotPlay({ onOpenGame }) {
   const [session, setSession] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const sessionRef = useRef(session)
+  const busyRef = useRef(busy)
+  sessionRef.current = session
+  busyRef.current = busy
   const moves = useMemo(() => movesFromPgn(session?.pgn || ''), [session?.pgn])
 
   const selectDifficulty = (nextDifficulty) => {
@@ -53,28 +57,14 @@ export default function BotPlay({ onOpenGame }) {
     }
   }
 
-  const submitMove = async (drop) => {
-    if (!session || busy || session.status !== 'active') return false
-    const move = buildBotMovePayload(drop)
-    if (!move) return false
-    setBusy(true)
-    setError('')
-    try {
-      const next = await api.playBotMove(session.id, move)
-      setSession(next)
-      return true
-    } catch (e) {
-      setError(e.message)
-      return false
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const onPieceDrop = (drop) => {
-    void submitMove(drop)
-    return false
-  }
+  const onPieceDrop = useMemo(() => createBotDropHandler({
+    getSession: () => sessionRef.current,
+    getBusy: () => busyRef.current,
+    setBusy,
+    setError,
+    setSession,
+    playBotMove: api.playBotMove,
+  }), [])
 
   const saveAndAnalyze = async () => {
     if (!session || session.status !== 'finished') return
