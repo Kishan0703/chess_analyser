@@ -75,7 +75,7 @@ export default function BotPlay({ onOpenGame }) {
   }
 
   const saveAndAnalyze = async () => {
-    if (!session) return
+    if (!session || session.status !== 'finished') return
     setBusy(true)
     try {
       const result = await api.saveBotGame(session.id)
@@ -213,7 +213,7 @@ export default function BotPlay({ onOpenGame }) {
             <button type="button" className="primary-action" onClick={startGame} disabled={busy}>
               {session ? 'New game' : 'Start game'}
             </button>
-            {session && (
+            {session?.status === 'finished' && (
               <button type="button" className="secondary-action" onClick={saveAndAnalyze} disabled={busy}>
                 Save and analyze
               </button>
