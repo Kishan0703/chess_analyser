@@ -53,10 +53,17 @@ class SettingsUpdate(BaseModel):
     ollama_model: str | None = None
 
 
+class BotAdvancedSettings(BaseModel):
+    label: str | None = None
+    skill_level: int = Field(ge=0, le=20)
+    move_time_ms: int = Field(ge=10, le=5000)
+    randomness: float = Field(ge=0, le=1)
+
+
 class BotGameCreate(BaseModel):
     player_color: str = "white"
     difficulty: str = "club"
-    advanced: dict | None = None
+    advanced: BotAdvancedSettings | None = None
 
 
 class BotMoveRequest(BaseModel):
@@ -353,7 +360,8 @@ def chat_about_game(game_id: int, req: ChatRequest):
 @app.post("/api/play/bot/games")
 def create_bot_game(req: BotGameCreate):
     try:
-        return play.new_game(req.player_color, req.difficulty, req.advanced)
+        advanced = req.advanced.model_dump(exclude_none=True) if req.advanced else None
+        return play.new_game(req.player_color, req.difficulty, advanced)
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:

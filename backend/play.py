@@ -19,6 +19,28 @@ DIFFICULTY_PRESETS = {
 }
 
 
+def _validated_advanced(difficulty: str, advanced: dict | None = None) -> dict:
+    config = dict(DIFFICULTY_PRESETS[difficulty])
+    if advanced is not None:
+        config.update(advanced)
+    try:
+        skill_level = int(config["skill_level"])
+        move_time_ms = int(config["move_time_ms"])
+        randomness = float(config["randomness"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError("invalid advanced settings") from e
+    if not 0 <= skill_level <= 20:
+        raise ValueError("skill_level must be between 0 and 20")
+    if not 10 <= move_time_ms <= 5000:
+        raise ValueError("move_time_ms must be between 10 and 5000")
+    if not 0 <= randomness <= 1:
+        raise ValueError("randomness must be between 0 and 1")
+    config["skill_level"] = skill_level
+    config["move_time_ms"] = move_time_ms
+    config["randomness"] = randomness
+    return config
+
+
 def _legal_moves(board: chess.Board) -> list[dict]:
     return [
         {"uci": move.uci(), "from": chess.square_name(move.from_square),
@@ -129,9 +151,7 @@ def new_game(player_color: str, difficulty: str, advanced: dict | None = None,
     if difficulty not in DIFFICULTY_PRESETS:
         raise ValueError("unknown difficulty")
 
-    config = dict(DIFFICULTY_PRESETS[difficulty])
-    if advanced is not None:
-        config.update(advanced)
+    config = _validated_advanced(difficulty, advanced)
     board = chess.Board()
     session = {
         "player_color": player_color,

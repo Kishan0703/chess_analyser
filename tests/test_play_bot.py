@@ -39,6 +39,20 @@ def test_bot_play_api_maps_illegal_move_to_400(monkeypatch):
     assert response.json()["detail"] == "illegal move"
 
 
+def test_bot_play_api_rejects_invalid_advanced_settings():
+    from fastapi.testclient import TestClient
+    from backend import app as app_module
+
+    client = TestClient(app_module.app)
+    response = client.post("/api/play/bot/games", json={
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": {"skill_level": 8, "move_time_ms": 0, "randomness": 0.2},
+    })
+
+    assert response.status_code == 422
+
+
 def make_conn():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -118,6 +132,21 @@ def test_new_game_creates_white_to_move_session(monkeypatch):
     assert result["status"] == "active"
     assert result["fen"] == chess.STARTING_FEN
     assert result["legal_moves"]
+
+
+def test_new_game_rejects_out_of_range_advanced_settings(monkeypatch):
+    conn = make_conn()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    with pytest.raises(ValueError, match="skill_level must be between 0 and 20"):
+        play.new_game("white", "club", {"skill_level": 99})
+
+    assert conn.execute("SELECT COUNT(*) AS c FROM bot_games").fetchone()["c"] == 0
 
 
 def test_get_game_returns_serialized_persisted_session(monkeypatch):

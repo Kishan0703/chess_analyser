@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { api } from '../api.js'
+import { buildBotMovePayload } from '../botPlayMoves.js'
 
 const PRESETS = {
   beginner: { label: 'Beginner', skill_level: 2, move_time_ms: 80, randomness: 0.55 },
@@ -52,18 +53,14 @@ export default function BotPlay({ onOpenGame }) {
     }
   }
 
-  const onPieceDrop = async (sourceSquare, targetSquare, piece) => {
+  const submitMove = async (drop) => {
     if (!session || busy || session.status !== 'active') return false
+    const move = buildBotMovePayload(drop)
+    if (!move) return false
     setBusy(true)
     setError('')
     try {
-      const promotion = piece?.[1]?.toLowerCase() === 'p' &&
-        (targetSquare.endsWith('8') || targetSquare.endsWith('1')) ? 'q' : undefined
-      const next = await api.playBotMove(session.id, {
-        from: sourceSquare,
-        to: targetSquare,
-        promotion,
-      })
+      const next = await api.playBotMove(session.id, move)
       setSession(next)
       return true
     } catch (e) {
@@ -72,6 +69,11 @@ export default function BotPlay({ onOpenGame }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  const onPieceDrop = (drop) => {
+    void submitMove(drop)
+    return false
   }
 
   const saveAndAnalyze = async () => {
