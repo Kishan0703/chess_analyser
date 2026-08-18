@@ -406,6 +406,22 @@ def save_bot_game(bot_game_id: int):
         raise HTTPException(400, str(e))
 
 
+@app.post("/api/play/bot/games/{bot_game_id}/resign")
+def resign_bot_game(bot_game_id: int):
+    try:
+        return play.resign_game(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/play/bot/games/{bot_game_id}/draw-offer")
+def offer_bot_draw(bot_game_id: int):
+    try:
+        return play.offer_draw(bot_game_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 # Serve the built frontend (must be mounted last so /api wins)
 DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if DIST.exists():

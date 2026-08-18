@@ -2,6 +2,7 @@
 import io
 import random
 from collections.abc import Callable
+from datetime import datetime
 
 import chess
 import chess.engine
@@ -134,7 +135,7 @@ def _board_from_session(session: dict) -> chess.Board:
 
 
 def serialize_board_state(session: dict, board: chess.Board) -> dict:
-    return {
+    state = {
         "id": session["id"],
         "player_color": session["player_color"],
         "difficulty": session["difficulty"],
@@ -143,8 +144,12 @@ def serialize_board_state(session: dict, board: chess.Board) -> dict:
         "fen": board.fen(),
         "status": session["status"],
         "result": session["result"],
+        "saved_game_id": session.get("saved_game_id"),
         "legal_moves": _legal_moves(board) if session["status"] == "active" else [],
     }
+    if session.get("saved_game_id"):
+        state["game_id"] = session["saved_game_id"]
+    return state
 
 
 def new_game(player_color: str, difficulty: str, advanced: dict | None = None,
@@ -193,39 +198,103 @@ def get_game(bot_game_id: int) -> dict:
     return serialize_board_state(session, _board_from_session(session))
 
 
+def _save_session_to_game(conn, bot_game_id: int, session: dict) -> int:
+    if session.get("saved_game_id"):
+        return session["saved_game_id"]
+    if session["status"] != "finished":
+        raise ValueError("bot game is not finished")
+
+    game_id = db.insert_game(conn, {
+        "source": "local-bot",
+        "source_url": f"local-bot:{bot_game_id}",
+        "pgn": session["pgn"],
+        "white": "You" if session["player_color"] == "white" else "ChessCoach Bot",
+        "black": "ChessCoach Bot" if session["player_color"] == "white" else "You",
+        "white_elo": None,
+        "black_elo": None,
+        "result": session["result"],
+        "eco": None,
+        "opening": "Bot practice",
+        "time_control": "offline",
+        "played_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "user_color": session["player_color"],
+    })
+    if game_id is None:
+        row = conn.execute(
+            "SELECT id FROM games WHERE source_url = ?", (f"local-bot:{bot_game_id}",)
+        ).fetchone()
+        game_id = row["id"]
+    db.mark_bot_game_saved(conn, bot_game_id, game_id)
+    session["saved_game_id"] = game_id
+    return game_id
+
+
 def save_to_game(bot_game_id: int) -> dict:
     with db.connect() as conn:
         session = db.get_bot_game(conn, bot_game_id)
         if session is None:
             raise ValueError("bot game not found")
-        if session.get("saved_game_id"):
-            return {"game_id": session["saved_game_id"]}
-        if session["status"] != "finished":
-            raise ValueError("bot game is not finished")
-
-        game_id = db.insert_game(conn, {
-            "source": "local-bot",
-            "source_url": f"local-bot:{bot_game_id}",
-            "pgn": session["pgn"],
-            "white": "You" if session["player_color"] == "white" else "ChessCoach Bot",
-            "black": "ChessCoach Bot" if session["player_color"] == "white" else "You",
-            "white_elo": None,
-            "black_elo": None,
-            "result": session["result"],
-            "eco": None,
-            "opening": "Bot practice",
-            "time_control": "offline",
-            "played_at": None,
-            "user_color": session["player_color"],
-        })
-        if game_id is None:
-            row = conn.execute(
-                "SELECT id FROM games WHERE source_url = ?", (f"local-bot:{bot_game_id}",)
-            ).fetchone()
-            game_id = row["id"]
-        db.mark_bot_game_saved(conn, bot_game_id, game_id)
+        game_id = _save_session_to_game(conn, bot_game_id, session)
         conn.commit()
         return {"game_id": game_id}
+
+
+def resign_game(bot_game_id: int) -> dict:
+    with db.connect() as conn:
+        session = db.get_bot_game(conn, bot_game_id)
+        if session is None:
+            raise ValueError("bot game not found")
+        if session["status"] != "active":
+            raise ValueError("bot game is finished")
+
+        result = "0-1" if session["player_color"] == "white" else "1-0"
+        session.update({
+            "pgn": _append_pgn(session["pgn"], [], result),
+            "status": "finished",
+            "result": result,
+        })
+        db.update_bot_game(conn, bot_game_id, session)
+        _save_session_to_game(conn, bot_game_id, session)
+        conn.commit()
+
+    state = serialize_board_state(session, _board_from_session(session))
+    state["resigned"] = True
+    return state
+
+
+def _bot_accepts_draw(board: chess.Board) -> bool:
+    return (
+        board.is_stalemate()
+        or board.is_insufficient_material()
+        or board.can_claim_draw()
+    )
+
+
+def offer_draw(bot_game_id: int) -> dict:
+    with db.connect() as conn:
+        session = db.get_bot_game(conn, bot_game_id)
+        if session is None:
+            raise ValueError("bot game not found")
+        if session["status"] != "active":
+            raise ValueError("bot game is finished")
+
+        board = _board_from_session(session)
+        if _bot_accepts_draw(board):
+            session.update({
+                "pgn": _append_pgn(session["pgn"], [], "1/2-1/2"),
+                "status": "finished",
+                "result": "1/2-1/2",
+            })
+            db.update_bot_game(conn, bot_game_id, session)
+            _save_session_to_game(conn, bot_game_id, session)
+            conn.commit()
+            state = serialize_board_state(session, board)
+            state["draw_offer"] = "accepted"
+            return state
+
+    state = serialize_board_state(session, board)
+    state["draw_offer"] = "declined"
+    return state
 
 
 def apply_player_move(bot_game_id: int, move: dict,
@@ -268,6 +337,8 @@ def apply_player_move(bot_game_id: int, move: dict,
             "result": result,
         })
         db.update_bot_game(conn, bot_game_id, session)
+        if status == "finished":
+            _save_session_to_game(conn, bot_game_id, session)
 
     state = serialize_board_state(session, board)
     state["last_player_move"] = last_player_move

@@ -243,7 +243,7 @@ def get_profile(conn: sqlite3.Connection, username: str | None = None,
     user_where = ""
     user_params: list = []
     if name:
-        user_where = "WHERE lower(g.white) = ? OR lower(g.black) = ?"
+        user_where = "WHERE lower(g.white) = ? OR lower(g.black) = ? OR g.source = 'local-bot'"
         user_params = [name, name]
 
     games = [dict(r) for r in conn.execute(
@@ -274,6 +274,8 @@ def get_profile(conn: sqlite3.Connection, username: str | None = None,
     analyzed_game_ids = [g["id"] for g in analyzed_games]
 
     def user_color_for(g: dict) -> str | None:
+        if g.get("source") == "local-bot":
+            return g.get("user_color")
         if name == (g.get("white") or "").lower():
             return "white"
         if name == (g.get("black") or "").lower():

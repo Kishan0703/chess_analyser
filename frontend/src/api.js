@@ -34,6 +34,10 @@ export const api = {
     request(`/api/play/bot/games/${id}/move`, { method: 'POST', body: JSON.stringify(move) }),
   saveBotGame: (id) =>
     request(`/api/play/bot/games/${id}/save`, { method: 'POST' }),
+  resignBotGame: (id) =>
+    request(`/api/play/bot/games/${id}/resign`, { method: 'POST' }),
+  offerBotDraw: (id) =>
+    request(`/api/play/bot/games/${id}/draw-offer`, { method: 'POST' }),
   chat: (id, question, ply, history) =>
     request(`/api/games/${id}/chat`, {
       method: 'POST',

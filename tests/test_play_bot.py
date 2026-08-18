@@ -363,6 +363,128 @@ def test_apply_player_move_rebuilds_pgn_history_for_draw_claim(monkeypatch):
     assert result["last_bot_move"] is None
 
 
+def test_apply_player_move_auto_saves_finished_game(monkeypatch):
+    conn = make_conn()
+    board = chess.Board()
+    for uci in ["f2f3", "e7e5", "g2g4"]:
+        board.push_uci(uci)
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "black",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": "1. f3 e5 2. g4 *",
+        "fen": board.fen(),
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.apply_player_move(bot_game_id, {"from": "d8", "to": "h4"})
+
+    assert result["status"] == "finished"
+    assert result["result"] == "0-1"
+    assert result["saved_game_id"] > 0
+    saved = db.get_game(conn, result["saved_game_id"], username="ConfiguredChesscomUser")
+    assert saved["source"] == "local-bot"
+    assert saved["user_color"] == "black"
+
+
+def test_resign_game_finishes_and_saves_local_game(monkeypatch):
+    conn = make_conn()
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": "1. e4 e5 *",
+        "fen": "after",
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.resign_game(bot_game_id)
+
+    assert result["status"] == "finished"
+    assert result["result"] == "0-1"
+    assert result["saved_game_id"] > 0
+    saved = db.get_game(conn, result["saved_game_id"], username="You")
+    assert saved["source"] == "local-bot"
+    assert saved["result"] == "0-1"
+
+
+def test_offer_draw_accepts_claimable_draw_and_saves(monkeypatch):
+    conn = make_conn()
+    pgn = "1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 *"
+    board = chess.Board()
+    for uci in ["g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8"]:
+        board.push_uci(uci)
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": pgn,
+        "fen": board.fen(),
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.offer_draw(bot_game_id)
+
+    assert result["draw_offer"] == "accepted"
+    assert result["status"] == "finished"
+    assert result["result"] == "1/2-1/2"
+    assert result["saved_game_id"] > 0
+    saved = db.get_game(conn, result["saved_game_id"], username="You")
+    assert saved["result"] == "1/2-1/2"
+
+
+def test_offer_draw_declines_early_game_without_saving(monkeypatch):
+    conn = make_conn()
+    bot_game_id = db.create_bot_game(conn, {
+        "player_color": "white",
+        "difficulty": "club",
+        "advanced": play.DIFFICULTY_PRESETS["club"],
+        "pgn": "1. e4 e5 *",
+        "fen": "after",
+        "status": "active",
+        "result": "*",
+    })
+    conn.commit()
+
+    class ConnCtx:
+        def __enter__(self): return conn
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(play.db, "connect", lambda: ConnCtx())
+
+    result = play.offer_draw(bot_game_id)
+
+    assert result["draw_offer"] == "declined"
+    assert result["status"] == "active"
+    assert result["result"] == "*"
+    assert result["saved_game_id"] is None
+    assert conn.execute("SELECT COUNT(*) AS c FROM games").fetchone()["c"] == 0
+
+
 def test_save_to_game_creates_local_bot_game_for_analysis(monkeypatch):
     conn = make_conn()
     bot_game_id = db.create_bot_game(conn, {
@@ -438,3 +560,27 @@ def test_local_bot_games_keep_saved_user_color_with_configured_username():
 
     assert game["user_color"] == "white"
     assert any(g["id"] == game_id and g["user_color"] == "white" for g in games)
+
+
+def test_profile_includes_local_bot_games_with_configured_username():
+    conn = make_conn()
+    game_id = db.insert_game(conn, {
+        "source": "local-bot",
+        "source_url": "local-bot:profile-test",
+        "pgn": "1. e4 e5 *",
+        "white": "You",
+        "black": "ChessCoach Bot",
+        "white_elo": None,
+        "black_elo": None,
+        "result": "1-0",
+        "eco": None,
+        "opening": "Bot practice",
+        "time_control": "offline",
+        "played_at": "2026-08-18 12:00:00",
+        "user_color": "white",
+    })
+
+    profile = db.get_profile(conn, username="ConfiguredChesscomUser")
+
+    assert profile["summary"]["games"] == 1
+    assert profile["summary"]["wins"] == 1

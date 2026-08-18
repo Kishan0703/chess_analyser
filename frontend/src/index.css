@@ -822,6 +822,20 @@ code {
   align-items: start;
 }
 
+.bot-setup,
+.bot-play-board-layout {
+  display: grid;
+  justify-items: center;
+}
+
+.bot-setup .bot-controls {
+  width: min(100%, 560px);
+}
+
+.bot-play-board-layout .bot-board {
+  width: min(100%, 620px);
+}
+
 .bot-board {
   display: grid;
   gap: 12px;
@@ -951,6 +965,21 @@ code {
 
 .bot-actions button {
   border-radius: 8px;
+}
+
+.bot-game-actions {
+  justify-content: center;
+}
+
+.danger-action {
+  color: #fff;
+  background: var(--blunder);
+  border-color: color-mix(in srgb, var(--blunder) 82%, #000);
+}
+
+.danger-action:hover:not(:disabled) {
+  color: #fff;
+  background: color-mix(in srgb, var(--blunder) 88%, #000);
 }
 
 .board-col {
