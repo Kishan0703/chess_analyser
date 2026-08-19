@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 import Onboarding from './Onboarding.jsx'
 import InfoTip from './InfoTip.jsx'
 import { formatTimeControl } from '../timeControl.js'

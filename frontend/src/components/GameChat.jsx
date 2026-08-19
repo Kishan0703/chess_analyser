@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 
 export default function GameChat({ gameId, ply, analyzed, currentMove }) {
   const [messages, setMessages] = useState([])

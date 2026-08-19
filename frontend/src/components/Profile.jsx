@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 
 function Stat({ label, value }) {
   return (

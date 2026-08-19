@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 import { createBotDropHandler } from '../botPlayMoves.js'
 
 const PRESETS = {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Chess } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 import EvalGraph from './EvalGraph.jsx'
 import MoveList from './MoveList.jsx'
 import CoachPanel from './CoachPanel.jsx'

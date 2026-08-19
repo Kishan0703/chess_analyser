@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api.js'
+import { api } from '../api/chesscoach'
 
 const LABELS = {
   brilliant: 'Brilliant',
