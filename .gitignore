@@ -8,6 +8,7 @@ __pycache__/
 # Node / frontend build
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # Engine binary (download separately — GPL, ~50MB)
 engines/
@@ -21,6 +22,7 @@ settings.json
 
 # Private / non-shipping
 content/
+.superpowers/
 
 # OS / editor
 .DS_Store
