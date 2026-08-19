@@ -1,53 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../api/chesscoach'
+import type { ProfileResponse } from '../../types/api'
 
 interface ProfileProps {
   onOpenGame: (id: number | string) => void
-}
-
-interface ProfileSummary {
-  games: number
-  analyzed: number
-  coached: number
-  avg_win_pct_loss: number
-  wins: number
-  losses: number
-  draws: number
-  unknown_results?: number
-  blunders: number
-  mistakes: number
-  inaccuracies: number
-}
-
-interface ThemeStat {
-  slug: string
-  count: number
-}
-
-interface OpeningStat {
-  opening: string
-  games: number
-  wins: number
-  losses: number
-  draws: number
-  avg_loss: number
-}
-
-interface RecentGame {
-  game_id: number | string
-  played_at?: string
-  opponent: string
-  result: string
-  blunders: number
-  mistakes: number
-  themes: string[]
-}
-
-interface ProfileData {
-  summary: ProfileSummary
-  themes: ThemeStat[]
-  openings: OpeningStat[]
-  recent: RecentGame[]
 }
 
 interface StatProps {
@@ -84,12 +40,12 @@ function InsightList({ title, items, tone }: InsightListProps) {
 }
 
 export default function Profile({ onOpenGame }: ProfileProps) {
-  const [profile, setProfile] = useState<ProfileData | null>(null)
+  const [profile, setProfile] = useState<ProfileResponse | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.profile()
-      .then((data) => setProfile(data as ProfileData))
+      .then(setProfile)
       .catch((error: unknown) => setError(errorMessage(error)))
   }, [])
 

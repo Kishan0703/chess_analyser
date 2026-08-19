@@ -2,27 +2,10 @@ import { useMemo, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { api } from '../../api/chesscoach'
 import { createBotDropHandler } from './botPlayMoves'
+import type { BotAdvancedSettings, BotDifficulty, BotSession, PlayerColor } from '../../types/api'
 
-type PlayerColor = 'white' | 'black'
-type Difficulty = 'beginner' | 'casual' | 'club' | 'strong' | 'master'
-
-interface AdvancedSettings {
-  skill_level: number
-  move_time_ms: number
-  randomness: number
-}
-
-interface BotSession {
-  id: number
-  status: 'active' | 'finished'
-  fen: string
-  pgn?: string
-  player_color?: PlayerColor
-  saved_game_id?: number | string | null
-  game_id?: number | string | null
-  result?: string
-  draw_offer?: string
-}
+type Difficulty = BotDifficulty
+type AdvancedSettings = Required<Pick<BotAdvancedSettings, 'skill_level' | 'move_time_ms' | 'randomness'>>
 
 interface BotPlayProps {
   onOpenGame: (id: number | string) => void
@@ -87,7 +70,7 @@ export default function BotPlay({ onOpenGame }: BotPlayProps) {
     setError('')
     setNotice('')
     try {
-      const next = await api.createBotGame({ player_color: playerColor, difficulty, advanced }) as BotSession
+      const next = await api.createBotGame({ player_color: playerColor, difficulty, advanced })
       setSession(next)
     } catch (error) {
       setError(errorMessage(error))
@@ -102,10 +85,10 @@ export default function BotPlay({ onOpenGame }: BotPlayProps) {
     setBusy,
     setError,
     setSession: (value) => setSession((current) => {
-      if (typeof value === 'function') return value(current as BotSession) as BotSession
-      return value as BotSession
+      if (!current) return current
+      return typeof value === 'function' ? value(current) : value
     }),
-    playBotMove: async (id, move) => api.playBotMove(id, move) as Promise<BotSession>,
+    playBotMove: (id, move) => api.playBotMove(id, move),
   }), [busy, session])
 
   const saveAndAnalyze = async () => {
@@ -113,11 +96,12 @@ export default function BotPlay({ onOpenGame }: BotPlayProps) {
     setBusy(true)
     setNotice('')
     try {
-      if (session.saved_game_id || session.game_id) {
-        onOpenGame((session.saved_game_id || session.game_id) as number | string)
+      const savedGameId = session.saved_game_id ?? session.game_id
+      if (savedGameId != null) {
+        onOpenGame(savedGameId)
         return
       }
-      const result = await api.saveBotGame(session.id) as { game_id: number | string }
+      const result = await api.saveBotGame(session.id)
       onOpenGame(result.game_id)
     } catch (error) {
       setError(errorMessage(error))
@@ -132,7 +116,7 @@ export default function BotPlay({ onOpenGame }: BotPlayProps) {
     setError('')
     setNotice('')
     try {
-      const next = await api.resignBotGame(session.id) as BotSession
+      const next = await api.resignBotGame(session.id)
       setSession(next)
       setNotice('Game saved after resignation.')
     } catch (error) {
@@ -148,7 +132,7 @@ export default function BotPlay({ onOpenGame }: BotPlayProps) {
     setError('')
     setNotice('')
     try {
-      const next = await api.offerBotDraw(session.id) as BotSession
+      const next = await api.offerBotDraw(session.id)
       setSession(next)
       setNotice(next.draw_offer === 'accepted'
         ? 'Draw accepted. Game saved.'

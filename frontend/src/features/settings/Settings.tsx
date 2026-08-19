@@ -1,17 +1,13 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api/chesscoach'
-import type { SettingsPayload } from '../../types/api'
+import type { OnboardingResponse, SettingsPayload } from '../../types/api'
 
 type SettingsForm = Omit<SettingsPayload, 'engine_movetime_ms' | 'engine_threads'> & {
   engine_movetime_ms?: number | string | null
   engine_threads?: number | string | null
 }
 
-interface OnboardingStatus {
-  stockfish_found: boolean
-  stockfish_path?: string
-  stockfish_error?: string
-}
+type OnboardingStatus = Pick<OnboardingResponse, 'stockfish_found' | 'stockfish_path' | 'stockfish_error'>
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
@@ -21,7 +17,7 @@ export default function Settings() {
   const [status, setStatus] = useState('')
 
   const refreshStockfishStatus = async () => {
-    const onboarding = await api.onboarding() as OnboardingStatus
+    const onboarding = await api.onboarding()
     setStockfishStatus(onboarding)
   }
 
@@ -29,7 +25,7 @@ export default function Settings() {
     Promise.all([api.settings(), api.onboarding()])
       .then(([loaded, onboarding]) => {
         setCfg(loaded)
-        setStockfishStatus(onboarding as OnboardingStatus)
+        setStockfishStatus(onboarding)
       })
       .catch((error: unknown) => setStatus(errorMessage(error)))
   }, [])

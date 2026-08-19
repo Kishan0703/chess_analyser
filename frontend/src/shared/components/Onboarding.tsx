@@ -1,25 +1,12 @@
 import type { ReactNode } from 'react'
+import type { OnboardingResponse } from '../../types/api'
 
 // First-run checklist. Reflects live setup state from /api/onboarding and checks
 // itself off as the user completes each step. Hidden once fully onboarded.
 
 type StepStatus = 'done' | 'warn' | 'todo'
 
-export interface OnboardingData {
-  coach_provider?: string
-  claude_key_set?: boolean
-  gemini_key_set?: boolean
-  ollama_reachable?: boolean
-  ollama_model_present?: boolean
-  ollama_model?: string
-  chesscom_username?: string
-  games: number
-  engine_analyzed: number
-  coached: number
-  stockfish_found?: boolean
-  stockfish_path?: string
-  stockfish_error?: string
-}
+export type OnboardingData = OnboardingResponse
 
 interface StepProps {
   status: StepStatus

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../api/chesscoach'
-import type { GameMove } from '../../types/api'
+import type {
+  GameMove,
+  PositionAnalysisResponse,
+  PositionCandidate,
+  PositionExplanationResponse,
+} from '../../types/api'
 
 const LABELS: Record<string, string> = {
   brilliant: 'Brilliant',
@@ -10,24 +15,6 @@ const LABELS: Record<string, string> = {
   inaccuracy: 'Inaccuracy',
   mistake: 'Mistake',
   blunder: 'Blunder',
-}
-
-interface Candidate {
-  move: string
-  line: string
-  eval_mate?: number | null
-  eval_cp?: number | null
-  side_to_move_win_pct?: number | null
-}
-
-interface PositionData {
-  side_to_move?: string
-  candidates?: Candidate[]
-}
-
-interface Explanation {
-  explanation?: string
-  plan?: string
 }
 
 interface PositionAnalysisProps {
@@ -46,7 +33,7 @@ interface PositionAnalysisProps {
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
-function evalText(candidate?: Candidate) {
+function evalText(candidate?: PositionCandidate) {
   if (!candidate) return '...'
   if (candidate.eval_mate != null) return `M${Math.abs(candidate.eval_mate)}`
   if (candidate.eval_cp == null) return '...'
@@ -69,9 +56,9 @@ function verdictText(move: GameMove | null) {
 }
 
 export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, onVariation }: PositionAnalysisProps) {
-  const [cache, setCache] = useState<Record<number, PositionData>>({})
+  const [cache, setCache] = useState<Record<number, PositionAnalysisResponse>>({})
   const [errors, setErrors] = useState<Record<number, string>>({})
-  const [explanationCache, setExplanationCache] = useState<Record<number, Explanation>>({})
+  const [explanationCache, setExplanationCache] = useState<Record<number, PositionExplanationResponse>>({})
   const [explanationErrors, setExplanationErrors] = useState<Record<number, string>>({})
   const requestId = useRef(0)
   const explanationRequestId = useRef(0)
@@ -89,7 +76,7 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
     api.positionAnalysis(Number(gameId), ply)
       .then((result) => {
         if (requestId.current !== id) return
-        setCache((prev) => ({ ...prev, [ply]: result as PositionData }))
+        setCache((prev) => ({ ...prev, [ply]: result }))
       })
       .catch((error: unknown) => {
         if (requestId.current !== id) return
@@ -107,7 +94,7 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
       api.positionExplanation(Number(gameId), ply)
       .then((result) => {
         if (explanationRequestId.current !== id) return
-        setExplanationCache((prev) => ({ ...prev, [ply]: result as Explanation }))
+        setExplanationCache((prev) => ({ ...prev, [ply]: result }))
       })
       .catch((error: unknown) => {
         if (explanationRequestId.current !== id) return

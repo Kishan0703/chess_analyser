@@ -5,12 +5,11 @@ import { api } from '../../api/chesscoach'
 import EvalGraph from '../analysis/EvalGraph'
 import MoveList from '../analysis/MoveList'
 import CoachPanel from '../analysis/CoachPanel'
-import type { CoachReport, Theme } from '../analysis/CoachPanel'
 import InfoTip from '../../shared/components/InfoTip'
 import PositionAnalysis from '../analysis/PositionAnalysis'
 import GameChat from '../analysis/GameChat'
 import { formatTimeControl } from '../../shared/timeControl'
-import type { GameDetail, JobStatus } from '../../types/api'
+import type { BestLineResponse, GameDetail, JobStatus } from '../../types/api'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -48,26 +47,16 @@ interface VariationRequest {
   momentType?: string
 }
 
-interface BestLineResult {
-  fen: string
-  sans: string[]
-}
-
 interface Arrow {
   startSquare: string
   endSquare: string
   color: string
 }
 
-type GameData = Omit<GameDetail, 'coach' | 'themes'> & {
-  coach: CoachReport | null
-  themes: Theme[]
-}
-
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export default function GameView({ gameId }: GameViewProps) {
-  const [game, setGame] = useState<GameData | null>(null)
+  const [game, setGame] = useState<GameDetail | null>(null)
   const [ply, setPly] = useState(0)
   const [engineStatus, setEngineStatus] = useState<JobStatus | null>(null)
   const [coachBusy, setCoachBusy] = useState(false)
@@ -93,7 +82,7 @@ export default function GameView({ gameId }: GameViewProps) {
 
   const load = useCallback(() => {
     api.game(Number(gameId)).then((g) => {
-      setGame(g as GameData)
+      setGame(g)
       setPly(g.moves.length ? g.moves.length : 0)
       setVariation(null)
     }).catch((error: unknown) => setError(errorMessage(error)))
@@ -135,7 +124,7 @@ export default function GameView({ gameId }: GameViewProps) {
     let fen = baseFen || (ply <= 1 ? START_FEN : moves[ply - 2]?.fen_after) || START_FEN
     let sans = bestLineSans || []
     try {
-      const result = await api.bestLine(Number(gameId), ply) as BestLineResult
+      const result: BestLineResponse = await api.bestLine(Number(gameId), ply)
       fen = result.fen
       sans = result.sans
     } catch {

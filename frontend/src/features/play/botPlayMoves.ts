@@ -1,21 +1,10 @@
 import { Chess } from 'chess.js'
+import type { BotMoveRequest as BotMove, BotSession } from '../../types/api'
 
 type BotDrop = {
   piece?: { pieceType?: string } | null
   sourceSquare?: string | null
   targetSquare?: string | null
-}
-
-type BotMove = {
-  from: string
-  to: string
-  promotion?: string
-}
-
-type BotSession = {
-  id: number
-  status: string
-  fen: string
 }
 
 type BotDropHandlerOptions = {

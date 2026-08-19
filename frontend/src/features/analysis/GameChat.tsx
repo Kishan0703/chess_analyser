@@ -1,21 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { api } from '../../api/chesscoach'
-import type { GameMove } from '../../types/api'
+import type { ChatMessage, GameMove } from '../../types/api'
 
 interface GameChatProps {
   gameId: number | string
   ply: number
   analyzed: boolean
   currentMove: GameMove | null
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-interface ChatResponse {
-  answer: string
 }
 
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
@@ -44,8 +35,8 @@ export default function GameChat({ gameId, ply, analyzed, currentMove }: GameCha
     setBusy(true)
     setError('')
     try {
-      const result = await api.chat(Number(gameId), text, ply, history) as ChatResponse
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer } as ChatMessage])
+      const result = await api.chat(Number(gameId), { question: text, ply, history })
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer }])
     } catch (error) {
       setError(errorMessage(error))
     } finally {

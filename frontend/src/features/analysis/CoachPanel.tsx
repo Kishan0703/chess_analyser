@@ -1,26 +1,6 @@
-import type { GameMove } from '../../types/api'
+import type { CoachReport, GameMove, GameTheme } from '../../types/api'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-
-interface CoachMoment {
-  ply: number
-  moment_type?: string
-  title: string
-  explanation: string
-}
-
-export interface CoachReport {
-  opening_summary?: string
-  key_moments?: CoachMoment[]
-  takeaways?: string[]
-}
-
-export interface Theme {
-  id: number | string
-  slug: string
-  severity?: string
-  note?: string
-}
 
 export interface VariationRequest {
   ply: number
@@ -33,7 +13,7 @@ export interface VariationRequest {
 
 interface CoachPanelProps {
   coach: CoachReport | null
-  themes: Theme[]
+  themes: GameTheme[]
   moves: GameMove[]
   onJump: (ply: number) => void
   onVariation?: (request: VariationRequest) => void
@@ -53,7 +33,7 @@ export default function CoachPanel({ coach, themes, moves, onJump, onVariation }
     })
   }
 
-  const handleMomentClick = (m: CoachMoment) => {
+  const handleMomentClick = (m: CoachReport['key_moments'][number]) => {
     const gamePly = m.ply - 1  // position just before the moment's move
     onJump(gamePly)
     if (onVariation) {
