@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api.js'
 import Onboarding from './Onboarding.jsx'
 import InfoTip from './InfoTip.jsx'
+import { formatTimeControl } from '../timeControl.js'
 
 const PAGE_SIZE = 20
 
@@ -79,7 +80,7 @@ export default function GameList({ onOpen }) {
       if (analysisFilter === 'unreviewed' && g.engine_analyzed) return false
       if (!needle) return true
       const haystack = [
-        g.white, g.black, g.opening, g.eco, g.time_control, g.result,
+        g.white, g.black, g.opening, g.eco, g.time_control, formatTimeControl(g.time_control), g.result,
         (g.played_at || '').slice(0, 10),
       ].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(needle)
@@ -256,7 +257,7 @@ export default function GameList({ onOpen }) {
                   <td className={youBlack ? 'you-name' : ''}>{g.black} {g.black_elo ? `(${g.black_elo})` : ''}</td>
                   <td><span className={`result-chip ${o}`}>{resultLabel(g)}</span></td>
                   <td>{(g.opening || g.eco || '').slice(0, 40)}</td>
-                  <td>{g.time_control}</td>
+                  <td>{formatTimeControl(g.time_control)}</td>
                   <td>
                     {g.coached ? <span className="pill done">Coached</span>
                       : g.engine_analyzed ? <span className="pill engine">Engine</span>

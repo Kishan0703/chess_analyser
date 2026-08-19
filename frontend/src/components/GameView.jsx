@@ -8,6 +8,7 @@ import CoachPanel from './CoachPanel.jsx'
 import InfoTip from './InfoTip.jsx'
 import PositionAnalysis from './PositionAnalysis.jsx'
 import GameChat from './GameChat.jsx'
+import { formatTimeControl } from '../timeControl.js'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -327,7 +328,7 @@ export default function GameView({ gameId }) {
             {game.black} {game.black_elo ? `(${game.black_elo})` : ''} · {game.result}
           </h3>
           <div className="status-line">
-            {game.opening || game.eco} · {game.time_control} · {(game.played_at || '').slice(0, 10)}
+            {game.opening || game.eco} · {formatTimeControl(game.time_control)} · {(game.played_at || '').slice(0, 10)}
           </div>
           <div className="action-row">
             <button
