@@ -1,4 +1,4 @@
-export function formatTimeControl(value) {
+export function formatTimeControl(value: unknown): string {
   const raw = String(value || '').trim()
   if (!raw) return '-'
   if (raw.toLowerCase() === 'offline') return 'Offline'

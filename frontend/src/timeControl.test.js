@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { formatTimeControl } from './timeControl.js'
+import { formatTimeControl } from './shared/timeControl.ts'
 
 test('formats raw chess.com time controls for display', () => {
   assert.equal(formatTimeControl('600'), '10 min')

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getStoredTheme, applyTheme } from '../theme.js'
+import { getStoredTheme, applyTheme } from '../shared/theme'
 
 const THEMES = [
   { id: 'classic', name: 'Classic', bg: '#f6f8f6', accent: '#3a8045' },

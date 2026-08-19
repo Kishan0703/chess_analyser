@@ -8,7 +8,7 @@ import CoachPanel from './CoachPanel.jsx'
 import InfoTip from './InfoTip.jsx'
 import PositionAnalysis from './PositionAnalysis.jsx'
 import GameChat from './GameChat.jsx'
-import { formatTimeControl } from '../timeControl.js'
+import { formatTimeControl } from '../shared/timeControl'
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 

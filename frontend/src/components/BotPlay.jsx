@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
 import { api } from '../api/chesscoach'
-import { createBotDropHandler } from '../botPlayMoves.js'
+import { createBotDropHandler } from '../features/play/botPlayMoves'
 
 const PRESETS = {
   beginner: { label: 'Beginner', skill_level: 2, move_time_ms: 80, randomness: 0.55 },

@@ -1,9 +1,36 @@
 import { Chess } from 'chess.js'
 
-export function buildBotMovePayload({ piece, sourceSquare, targetSquare } = {}) {
+type BotDrop = {
+  piece?: { pieceType?: string } | null
+  sourceSquare?: string | null
+  targetSquare?: string | null
+}
+
+type BotMove = {
+  from: string
+  to: string
+  promotion?: string
+}
+
+type BotSession = {
+  id: number
+  status: string
+  fen: string
+}
+
+type BotDropHandlerOptions = {
+  getSession: () => BotSession | null
+  getBusy: () => boolean
+  setBusy: (value: boolean) => void
+  setError: (value: string) => void
+  setSession: (value: BotSession | ((current: BotSession) => BotSession)) => void
+  playBotMove: (id: number, move: BotMove) => Promise<BotSession>
+}
+
+export function buildBotMovePayload({ piece, sourceSquare, targetSquare }: BotDrop = {}): BotMove | null {
   if (!sourceSquare || !targetSquare) return null
-  const promotion = piece?.pieceType?.toLowerCase() === 'p' &&
-    (targetSquare.endsWith('8') || targetSquare.endsWith('1')) ? 'q' : undefined
+  const promotion = piece?.pieceType?.toLowerCase() === 'p'
+    && (targetSquare.endsWith('8') || targetSquare.endsWith('1')) ? 'q' : undefined
   return {
     from: sourceSquare,
     to: targetSquare,
@@ -11,7 +38,7 @@ export function buildBotMovePayload({ piece, sourceSquare, targetSquare } = {}) 
   }
 }
 
-export function previewBotPlayerMove(session, move) {
+export function previewBotPlayerMove(session: BotSession | null, move: BotMove): string | null {
   if (!session?.fen) return null
   const board = new Chess(session.fen)
   const next = board.move({
@@ -29,8 +56,8 @@ export function createBotDropHandler({
   setError,
   setSession,
   playBotMove,
-}) {
-  const submitMove = async (drop) => {
+}: BotDropHandlerOptions): (drop: BotDrop) => boolean {
+  const submitMove = async (drop: BotDrop): Promise<boolean> => {
     const session = getSession()
     if (!session || getBusy() || session.status !== 'active') return false
     const move = buildBotMovePayload(drop)
@@ -44,16 +71,16 @@ export function createBotDropHandler({
       const next = await playBotMove(session.id, move)
       setSession(next)
       return true
-    } catch (e) {
+    } catch (error) {
       setSession(session)
-      setError(e.message)
+      setError((error as Error).message)
       return false
     } finally {
       setBusy(false)
     }
   }
 
-  return (drop) => {
+  return (drop: BotDrop): boolean => {
     const session = getSession()
     if (!session || getBusy() || session.status !== 'active') return false
     const move = buildBotMovePayload(drop)

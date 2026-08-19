@@ -1,38 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
-import GameList from './components/GameList.jsx'
-import GameView from './components/GameView.jsx'
-import BotPlay from './components/BotPlay.jsx'
-import Profile from './components/Profile.jsx'
-import Settings from './components/Settings.jsx'
-import ThemePicker from './components/ThemePicker.jsx'
+import GameList from '../components/GameList.jsx'
+import GameView from '../components/GameView.jsx'
+import BotPlay from '../components/BotPlay.jsx'
+import Profile from '../components/Profile.jsx'
+import Settings from '../components/Settings.jsx'
+import ThemePicker from '../components/ThemePicker.jsx'
+import { hashForView, viewFromLocation } from './routes'
+import type { AppView } from './routes'
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ view: AppView; id: AppView['name']; icon: string; label: string }> = [
   { view: { name: 'list' }, id: 'list', icon: '♟', label: 'Your games' },
   { view: { name: 'profile' }, id: 'profile', icon: '↗', label: 'Training profile' },
   { view: { name: 'settings' }, id: 'settings', icon: '⚙', label: 'Settings' },
   { view: { name: 'play' }, id: 'play', icon: '▶', label: 'Play vs Bot' },
 ]
 
-function viewFromLocation() {
-  const hash = window.location.hash.replace(/^#\/?/, '')
-  const [name, id] = hash.split('/')
-  if (name === 'profile') return { name: 'profile' }
-  if (name === 'settings') return { name: 'settings' }
-  if (name === 'play') return { name: 'play' }
-  if (name === 'game' && id) return { name: 'game', id: decodeURIComponent(id) }
-  return { name: 'list' }
-}
-
-function hashForView(view) {
-  if (view.name === 'profile') return '#/profile'
-  if (view.name === 'settings') return '#/settings'
-  if (view.name === 'play') return '#/play'
-  if (view.name === 'game') return `#/game/${encodeURIComponent(view.id)}`
-  return '#/games'
-}
-
 export default function App() {
-  const [view, setView] = useState(() => viewFromLocation())
+  const [view, setView] = useState<AppView>(() => viewFromLocation())
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
@@ -44,7 +28,7 @@ export default function App() {
 
   const activeNav = view.name === 'game' ? 'list' : view.name
 
-  const navigate = useCallback((nextView) => {
+  const navigate = useCallback((nextView: AppView) => {
     const nextHash = hashForView(nextView)
     setView(nextView)
     if (window.location.hash !== nextHash) {
@@ -100,15 +84,15 @@ export default function App() {
       <main className="shell-main">
         <div className="page">
           {view.name === 'list' && (
-            <GameList onOpen={(id) => navigate({ name: 'game', id })} />
+            <GameList onOpen={(id: string) => navigate({ name: 'game', id })} />
           )}
           {view.name === 'game' && <GameView gameId={view.id} />}
           {view.name === 'profile' && (
-            <Profile onOpenGame={(id) => navigate({ name: 'game', id })} />
+            <Profile onOpenGame={(id: string) => navigate({ name: 'game', id })} />
           )}
           {view.name === 'settings' && <Settings />}
           {view.name === 'play' && (
-            <BotPlay onOpenGame={(id) => navigate({ name: 'game', id })} />
+            <BotPlay onOpenGame={(id: string) => navigate({ name: 'game', id })} />
           )}
         </div>
       </main>
