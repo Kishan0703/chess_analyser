@@ -196,6 +196,7 @@ The database stores:
 Run tests:
 
 ```bash
+.venv/bin/python -m pytest
 .venv/bin/python -m pytest tests
 ```
 
