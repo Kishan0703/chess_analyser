@@ -1,34 +1,53 @@
-import { useEffect, useRef, useState } from 'react'
-import { api } from '../api/chesscoach'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { api } from '../../api/chesscoach'
+import type { GameMove } from '../../types/api'
 
-export default function GameChat({ gameId, ply, analyzed, currentMove }) {
-  const [messages, setMessages] = useState([])
+interface GameChatProps {
+  gameId: number | string
+  ply: number
+  analyzed: boolean
+  currentMove: GameMove | null
+}
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface ChatResponse {
+  answer: string
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+export default function GameChat({ gameId, ply, analyzed, currentMove }: GameChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [question, setQuestion] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
-  const endRef = useRef(null)
+  const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'nearest' })
   }, [messages, busy])
 
-  const ask = async (e) => {
+  const ask = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const text = question.trim()
     if (!text || busy || !analyzed) return
 
     const history = messages.slice(-8)
-    const userMessage = { role: 'user', content: text }
+    const userMessage: ChatMessage = { role: 'user', content: text }
     setMessages((prev) => [...prev, userMessage])
     setQuestion('')
     setBusy(true)
     setError('')
     try {
-      const result = await api.chat(gameId, text, ply, history)
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer }])
-    } catch (err) {
-      setError(err.message)
+      const result = await api.chat(Number(gameId), text, ply, history) as ChatResponse
+      setMessages((prev) => [...prev, { role: 'assistant', content: result.answer } as ChatMessage])
+    } catch (error) {
+      setError(errorMessage(error))
     } finally {
       setBusy(false)
     }

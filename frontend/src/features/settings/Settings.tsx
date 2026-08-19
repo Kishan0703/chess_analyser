@@ -1,13 +1,27 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/chesscoach'
+import { api } from '../../api/chesscoach'
+import type { SettingsPayload } from '../../types/api'
+
+type SettingsForm = Omit<SettingsPayload, 'engine_movetime_ms' | 'engine_threads'> & {
+  engine_movetime_ms?: number | string | null
+  engine_threads?: number | string | null
+}
+
+interface OnboardingStatus {
+  stockfish_found: boolean
+  stockfish_path?: string
+  stockfish_error?: string
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export default function Settings() {
-  const [cfg, setCfg] = useState(null)
-  const [stockfishStatus, setStockfishStatus] = useState(null)
+  const [cfg, setCfg] = useState<SettingsForm | null>(null)
+  const [stockfishStatus, setStockfishStatus] = useState<OnboardingStatus | null>(null)
   const [status, setStatus] = useState('')
 
   const refreshStockfishStatus = async () => {
-    const onboarding = await api.onboarding()
+    const onboarding = await api.onboarding() as OnboardingStatus
     setStockfishStatus(onboarding)
   }
 
@@ -15,9 +29,9 @@ export default function Settings() {
     Promise.all([api.settings(), api.onboarding()])
       .then(([loaded, onboarding]) => {
         setCfg(loaded)
-        setStockfishStatus(onboarding)
+        setStockfishStatus(onboarding as OnboardingStatus)
       })
-      .catch((e) => setStatus(e.message))
+      .catch((error: unknown) => setStatus(errorMessage(error)))
   }, [])
 
   if (!cfg) return <div className="status-line">{status || 'Loading…'}</div>
@@ -44,13 +58,13 @@ export default function Settings() {
       setCfg(saved)
       try {
         await refreshStockfishStatus()
-      } catch (e) {
-        setStatus(`Saved. Readiness check failed: ${e.message}`)
+      } catch (error) {
+        setStatus(`Saved. Readiness check failed: ${errorMessage(error)}`)
         return
       }
       setStatus('Saved.')
-    } catch (e) {
-      setStatus(`Save failed: ${e.message}`)
+    } catch (error) {
+      setStatus(`Save failed: ${errorMessage(error)}`)
     }
   }
 
@@ -126,7 +140,7 @@ export default function Settings() {
           <label>
             Claude model
             <select
-              value={cfg.claude_model}
+              value={cfg.claude_model ?? ''}
               onChange={(e) => setCfg({ ...cfg, claude_model: e.target.value })}
             >
               <option value="claude-sonnet-4-6">Sonnet 4.6 (~3¢/game)</option>
@@ -163,7 +177,7 @@ export default function Settings() {
         Engine time per move (ms) — higher = more accurate, slower
         <input
           type="number" min="50" max="2000" step="50"
-          value={cfg.engine_movetime_ms}
+          value={cfg.engine_movetime_ms ?? ''}
           onChange={(e) => setCfg({ ...cfg, engine_movetime_ms: e.target.value })}
         />
       </label>
@@ -171,7 +185,7 @@ export default function Settings() {
         Engine threads
         <input
           type="number" min="1" max="16"
-          value={cfg.engine_threads}
+          value={cfg.engine_threads ?? ''}
           onChange={(e) => setCfg({ ...cfg, engine_threads: e.target.value })}
         />
       </label>

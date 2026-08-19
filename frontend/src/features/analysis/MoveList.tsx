@@ -1,4 +1,6 @@
-const BADGES = {
+import type { GameMove } from '../../types/api'
+
+const BADGES: Record<string, string> = {
   brilliant: '‼',
   great: '!',
   best: '★',
@@ -8,9 +10,27 @@ const BADGES = {
   blunder: '??',
 }
 
-function Move({ move, currentPly, onSelect }) {
+interface MoveProps {
+  move?: GameMove
+  currentPly: number
+  onSelect: (ply: number) => void
+}
+
+interface MoveListProps {
+  moves: GameMove[]
+  currentPly: number
+  onSelect: (ply: number) => void
+}
+
+interface MoveRow {
+  num: number
+  white: GameMove
+  black?: GameMove
+}
+
+function Move({ move, currentPly, onSelect }: MoveProps) {
   if (!move) return <span />
-  const badge = BADGES[move.classification]
+  const badge = BADGES[move.classification ?? '']
   return (
     <span
       className={`move ${move.ply === currentPly ? 'current' : ''}`}
@@ -30,8 +50,8 @@ function Move({ move, currentPly, onSelect }) {
   )
 }
 
-export default function MoveList({ moves, currentPly, onSelect }) {
-  const rows = []
+export default function MoveList({ moves, currentPly, onSelect }: MoveListProps) {
+  const rows: MoveRow[] = []
   for (let i = 0; i < moves.length; i += 2) {
     rows.push({ num: i / 2 + 1, white: moves[i], black: moves[i + 1] })
   }
@@ -44,7 +64,7 @@ export default function MoveList({ moves, currentPly, onSelect }) {
   )
 }
 
-function FragmentRow({ row, currentPly, onSelect }) {
+function FragmentRow({ row, currentPly, onSelect }: { row: MoveRow } & Pick<MoveListProps, 'currentPly' | 'onSelect'>) {
   return (
     <>
       <span className="num">{row.num}.</span>

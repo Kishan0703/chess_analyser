@@ -1,9 +1,40 @@
 import { useMemo, useState } from 'react'
 import { Chessboard } from 'react-chessboard'
-import { api } from '../api/chesscoach'
-import { createBotDropHandler } from '../features/play/botPlayMoves'
+import { api } from '../../api/chesscoach'
+import { createBotDropHandler } from './botPlayMoves'
 
-const PRESETS = {
+type PlayerColor = 'white' | 'black'
+type Difficulty = 'beginner' | 'casual' | 'club' | 'strong' | 'master'
+
+interface AdvancedSettings {
+  skill_level: number
+  move_time_ms: number
+  randomness: number
+}
+
+interface BotSession {
+  id: number
+  status: 'active' | 'finished'
+  fen: string
+  pgn?: string
+  player_color?: PlayerColor
+  saved_game_id?: number | string | null
+  game_id?: number | string | null
+  result?: string
+  draw_offer?: string
+}
+
+interface BotPlayProps {
+  onOpenGame: (id: number | string) => void
+}
+
+interface BotMoveRow {
+  number: number
+  white?: string
+  black?: string
+}
+
+const PRESETS: Record<Difficulty, AdvancedSettings & { label: string }> = {
   beginner: { label: 'Beginner', skill_level: 2, move_time_ms: 80, randomness: 0.55 },
   casual: { label: 'Casual', skill_level: 5, move_time_ms: 150, randomness: 0.35 },
   club: { label: 'Club', skill_level: 8, move_time_ms: 1500, randomness: 0.2 },
@@ -11,7 +42,7 @@ const PRESETS = {
   master: { label: 'Master', skill_level: 18, move_time_ms: 900, randomness: 0 },
 }
 
-const DIFFICULTY_HINTS = {
+const DIFFICULTY_HINTS: Record<Difficulty, string> = {
   beginner: 'Forgiving',
   casual: 'Light practice',
   club: 'Balanced',
@@ -19,7 +50,9 @@ const DIFFICULTY_HINTS = {
   master: 'Low randomness',
 }
 
-function movesFromPgn(pgn) {
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+function movesFromPgn(pgn: string): BotMoveRow[] {
   const sans = pgn
     .replace(/\[[^\]]*\]\s*/g, '')
     .trim()
@@ -33,18 +66,18 @@ function movesFromPgn(pgn) {
   }))
 }
 
-export default function BotPlay({ onOpenGame }) {
-  const [playerColor, setPlayerColor] = useState('white')
-  const [difficulty, setDifficulty] = useState('club')
+export default function BotPlay({ onOpenGame }: BotPlayProps) {
+  const [playerColor, setPlayerColor] = useState<PlayerColor>('white')
+  const [difficulty, setDifficulty] = useState<Difficulty>('club')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [advanced, setAdvanced] = useState(PRESETS.club)
-  const [session, setSession] = useState(null)
+  const [session, setSession] = useState<BotSession | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const moves = useMemo(() => movesFromPgn(session?.pgn || ''), [session?.pgn])
 
-  const selectDifficulty = (nextDifficulty) => {
+  const selectDifficulty = (nextDifficulty: Difficulty) => {
     setDifficulty(nextDifficulty)
     setAdvanced(PRESETS[nextDifficulty])
   }
@@ -54,10 +87,10 @@ export default function BotPlay({ onOpenGame }) {
     setError('')
     setNotice('')
     try {
-      const next = await api.createBotGame({ player_color: playerColor, difficulty, advanced })
+      const next = await api.createBotGame({ player_color: playerColor, difficulty, advanced }) as BotSession
       setSession(next)
-    } catch (e) {
-      setError(e.message)
+    } catch (error) {
+      setError(errorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -68,8 +101,11 @@ export default function BotPlay({ onOpenGame }) {
     getBusy: () => busy,
     setBusy,
     setError,
-    setSession,
-    playBotMove: api.playBotMove,
+    setSession: (value) => setSession((current) => {
+      if (typeof value === 'function') return value(current as BotSession) as BotSession
+      return value as BotSession
+    }),
+    playBotMove: async (id, move) => api.playBotMove(id, move) as Promise<BotSession>,
   }), [busy, session])
 
   const saveAndAnalyze = async () => {
@@ -78,13 +114,13 @@ export default function BotPlay({ onOpenGame }) {
     setNotice('')
     try {
       if (session.saved_game_id || session.game_id) {
-        onOpenGame(session.saved_game_id || session.game_id)
+        onOpenGame((session.saved_game_id || session.game_id) as number | string)
         return
       }
-      const result = await api.saveBotGame(session.id)
+      const result = await api.saveBotGame(session.id) as { game_id: number | string }
       onOpenGame(result.game_id)
-    } catch (e) {
-      setError(e.message)
+    } catch (error) {
+      setError(errorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -96,11 +132,11 @@ export default function BotPlay({ onOpenGame }) {
     setError('')
     setNotice('')
     try {
-      const next = await api.resignBotGame(session.id)
+      const next = await api.resignBotGame(session.id) as BotSession
       setSession(next)
       setNotice('Game saved after resignation.')
-    } catch (e) {
-      setError(e.message)
+    } catch (error) {
+      setError(errorMessage(error))
     } finally {
       setBusy(false)
     }
@@ -112,19 +148,19 @@ export default function BotPlay({ onOpenGame }) {
     setError('')
     setNotice('')
     try {
-      const next = await api.offerBotDraw(session.id)
+      const next = await api.offerBotDraw(session.id) as BotSession
       setSession(next)
       setNotice(next.draw_offer === 'accepted'
         ? 'Draw accepted. Game saved.'
         : 'Draw offer declined.')
-    } catch (e) {
-      setError(e.message)
+    } catch (error) {
+      setError(errorMessage(error))
     } finally {
       setBusy(false)
     }
   }
 
-  const updateAdvanced = (field, value) => {
+  const updateAdvanced = (field: keyof AdvancedSettings, value: number) => {
     setAdvanced((current) => ({ ...current, [field]: value }))
   }
 
@@ -157,7 +193,7 @@ export default function BotPlay({ onOpenGame }) {
           <div className="bot-control-group">
             <h3>Play as</h3>
             <div className="bot-choice-row" role="group" aria-label="Player color">
-              {['white', 'black'].map((color) => (
+              {(['white', 'black'] as PlayerColor[]).map((color) => (
                 <button
                   type="button"
                   className={playerColor === color ? 'selected' : ''}
@@ -174,7 +210,7 @@ export default function BotPlay({ onOpenGame }) {
           <div className="bot-control-group">
             <h3>Difficulty</h3>
             <div className="difficulty-grid">
-              {Object.entries(PRESETS).map(([key, preset]) => (
+              {(Object.entries(PRESETS) as Array<[Difficulty, AdvancedSettings & { label: string }]>).map(([key, preset]) => (
                 <button
                   type="button"
                   className={difficulty === key ? 'selected' : ''}

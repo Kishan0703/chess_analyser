@@ -1,11 +1,51 @@
+import type { GameMove } from '../../types/api'
+
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-export default function CoachPanel({ coach, themes, moves, onJump, onVariation }) {
+interface CoachMoment {
+  ply: number
+  moment_type?: string
+  title: string
+  explanation: string
+}
+
+export interface CoachReport {
+  opening_summary?: string
+  key_moments?: CoachMoment[]
+  takeaways?: string[]
+}
+
+export interface Theme {
+  id: number | string
+  slug: string
+  severity?: string
+  note?: string
+}
+
+export interface VariationRequest {
+  ply: number
+  baseFen?: string
+  bestLineSans?: string[]
+  playedUci?: string | null
+  playedSan?: string
+  momentType?: string
+}
+
+interface CoachPanelProps {
+  coach: CoachReport | null
+  themes: Theme[]
+  moves: GameMove[]
+  onJump: (ply: number) => void
+  onVariation?: (request: VariationRequest) => void
+}
+
+export default function CoachPanel({ coach, themes, moves, onJump, onVariation }: CoachPanelProps) {
   if (!coach) return null
+  const takeaways = coach.takeaways ?? []
 
   // Build a lookup so we can find the best_line and base FEN for any ply
-  const moveByPly = {}
-  const fenByPly = {}
+  const moveByPly: Record<number, GameMove> = {}
+  const fenByPly: Record<number, string> = {}
   if (moves) {
     moves.forEach((m) => {
       moveByPly[m.ply] = m
@@ -13,7 +53,7 @@ export default function CoachPanel({ coach, themes, moves, onJump, onVariation }
     })
   }
 
-  const handleMomentClick = (m) => {
+  const handleMomentClick = (m: CoachMoment) => {
     const gamePly = m.ply - 1  // position just before the moment's move
     onJump(gamePly)
     if (onVariation) {
@@ -73,11 +113,11 @@ export default function CoachPanel({ coach, themes, moves, onJump, onVariation }
         </div>
       )}
 
-      {coach.takeaways?.length > 0 && (
+      {takeaways.length > 0 && (
         <>
           <h3 style={{ marginTop: 14 }}>What to work on</h3>
           <ul className="takeaways">
-            {coach.takeaways.map((t, i) => <li key={i}>{t}</li>)}
+            {takeaways.map((t, i) => <li key={i}>{t}</li>)}
           </ul>
         </>
       )}

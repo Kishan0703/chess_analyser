@@ -1,7 +1,69 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api/chesscoach'
+import { api } from '../../api/chesscoach'
 
-function Stat({ label, value }) {
+interface ProfileProps {
+  onOpenGame: (id: number | string) => void
+}
+
+interface ProfileSummary {
+  games: number
+  analyzed: number
+  coached: number
+  avg_win_pct_loss: number
+  wins: number
+  losses: number
+  draws: number
+  unknown_results?: number
+  blunders: number
+  mistakes: number
+  inaccuracies: number
+}
+
+interface ThemeStat {
+  slug: string
+  count: number
+}
+
+interface OpeningStat {
+  opening: string
+  games: number
+  wins: number
+  losses: number
+  draws: number
+  avg_loss: number
+}
+
+interface RecentGame {
+  game_id: number | string
+  played_at?: string
+  opponent: string
+  result: string
+  blunders: number
+  mistakes: number
+  themes: string[]
+}
+
+interface ProfileData {
+  summary: ProfileSummary
+  themes: ThemeStat[]
+  openings: OpeningStat[]
+  recent: RecentGame[]
+}
+
+interface StatProps {
+  label: string
+  value: string | number
+}
+
+interface InsightListProps {
+  title: string
+  items: string[]
+  tone: string
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+function Stat({ label, value }: StatProps) {
   return (
     <div className="stat-card">
       <div className="stat-num">{value}</div>
@@ -10,7 +72,7 @@ function Stat({ label, value }) {
   )
 }
 
-function InsightList({ title, items, tone }) {
+function InsightList({ title, items, tone }: InsightListProps) {
   return (
     <div className={`profile-insight ${tone}`}>
       <h3>{title}</h3>
@@ -21,12 +83,14 @@ function InsightList({ title, items, tone }) {
   )
 }
 
-export default function Profile({ onOpenGame }) {
-  const [profile, setProfile] = useState(null)
+export default function Profile({ onOpenGame }: ProfileProps) {
+  const [profile, setProfile] = useState<ProfileData | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.profile().then(setProfile).catch((e) => setError(e.message))
+    api.profile()
+      .then((data) => setProfile(data as ProfileData))
+      .catch((error: unknown) => setError(errorMessage(error)))
   }, [])
 
   const themeData = useMemo(() => (profile?.themes || []).slice(0, 8), [profile])
@@ -53,13 +117,13 @@ export default function Profile({ onOpenGame }) {
     s.coached > 0 ? `${s.coached} coached game${s.coached === 1 ? '' : 's'} with strategic themes saved.` : null,
     s.avg_win_pct_loss <= 8 ? `Average loss is ${s.avg_win_pct_loss}%, which suggests steady conversion habits.` : null,
     s.wins > s.losses ? `Positive sample record: ${s.wins}-${s.losses}-${s.draws}.` : null,
-  ].filter(Boolean)
+  ].filter((item): item is string => Boolean(item))
   const focusAreas = [
     s.blunders > 0 ? `Reduce blunders first: ${s.blunders} found across analyzed games.` : null,
     s.mistakes > 0 ? `Review mistake positions: ${s.mistakes} medium-severity swings.` : null,
     topTheme ? `Recurring theme: ${topTheme.slug} appeared ${topTheme.count} time${topTheme.count === 1 ? '' : 's'}.` : null,
     topOpening ? `Opening to review: ${topOpening.opening} (${topOpening.games} game${topOpening.games === 1 ? '' : 's'}).` : null,
-  ].filter(Boolean)
+  ].filter((item): item is string => Boolean(item))
 
   return (
     <div className="profile-page">

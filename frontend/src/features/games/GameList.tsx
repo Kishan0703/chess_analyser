@@ -1,28 +1,43 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api } from '../api/chesscoach'
-import Onboarding from './Onboarding.jsx'
-import InfoTip from './InfoTip.jsx'
-import { formatTimeControl } from '../shared/timeControl'
+import { api } from '../../api/chesscoach'
+import Onboarding from '../../shared/components/Onboarding'
+import type { OnboardingData } from '../../shared/components/Onboarding'
+import InfoTip from '../../shared/components/InfoTip'
+import { formatTimeControl } from '../../shared/timeControl'
+import type { GameSummary } from '../../types/api'
 
 const PAGE_SIZE = 20
 
-function outcome(game) {
+interface GameListProps {
+  onOpen: (id: number) => void
+}
+
+interface ImportResult {
+  imported: number
+  skipped: number
+  archives: number
+  failed_archives?: number
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+function outcome(game: GameSummary): 'draw' | 'win' | 'loss' {
   if (!game.user_color || game.result === '1/2-1/2') return 'draw'
   return (game.user_color === 'white') === (game.result === '1-0') ? 'win' : 'loss'
 }
 
-function resultLabel(game) {
+function resultLabel(game: GameSummary) {
   const o = outcome(game)
   return o === 'draw' ? '½–½' : o === 'win' ? 'Win' : 'Loss'
 }
 
-export default function GameList({ onOpen }) {
-  const [games, setGames] = useState([])
+export default function GameList({ onOpen }: GameListProps) {
+  const [games, setGames] = useState<GameSummary[]>([])
   const [username, setUsername] = useState('')
   const [months, setMonths] = useState(3)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
-  const [ob, setOb] = useState(null)
+  const [ob, setOb] = useState<OnboardingData | null>(null)
   const [dismissed, setDismissed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -31,8 +46,8 @@ export default function GameList({ onOpen }) {
   const [page, setPage] = useState(1)
 
   const refresh = () => api.games().then(setGames)
-    .catch((e) => setStatus(e.message)).finally(() => setLoading(false))
-  const refreshOb = () => api.onboarding().then(setOb).catch(() => {})
+    .catch((error: unknown) => setStatus(errorMessage(error))).finally(() => setLoading(false))
+  const refreshOb = () => api.onboarding().then((data) => setOb(data as OnboardingData)).catch(() => {})
 
   useEffect(() => {
     refresh()
@@ -45,15 +60,15 @@ export default function GameList({ onOpen }) {
     setStatus('Importing from chess.com…')
     try {
       await api.saveSettings({ chesscom_username: username })
-      const r = await api.importGames(username, months)
+      const r = await api.importGames(username, months) as ImportResult
       const partial = r.failed_archives
         ? ` ${r.failed_archives} archive month(s) were temporarily unavailable.`
         : ''
       setStatus(`Imported ${r.imported} new games (${r.skipped} already known) from ${r.archives} month(s).${partial}`)
       refresh()
       refreshOb()
-    } catch (e) {
-      setStatus(`Import failed: ${e.message}`)
+    } catch (error) {
+      setStatus(`Import failed: ${errorMessage(error)}`)
     } finally {
       setBusy(false)
     }

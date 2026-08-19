@@ -1,22 +1,36 @@
 import { Area, AreaChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import type { GameMove } from '../../types/api'
 
 const CLAMP = 8
 const DOT_RADIUS = 4
 const DOMAIN_PAD = 0.6
 
-function evalLabel(move) {
+interface EvalGraphProps {
+  moves: GameMove[]
+  currentPly: number
+  currentMove: GameMove | null
+  onSelect: (ply: number) => void
+}
+
+interface EvaluationPoint {
+  ply: number
+  eval: number
+  san?: string
+}
+
+function evalLabel(move: GameMove | null) {
   if (!move) return 'Start'
   if (move.eval_mate != null) return `M${Math.abs(move.eval_mate)}`
-  const v = move.eval_cp / 100
+  const v = move.eval_cp! / 100
   return (v > 0 ? '+' : '') + v.toFixed(1)
 }
 
-export default function EvalGraph({ moves, currentPly, currentMove, onSelect }) {
-  const data = [{ ply: 0, eval: 0.2 }].concat(
+export default function EvalGraph({ moves, currentPly, currentMove, onSelect }: EvalGraphProps) {
+  const data: EvaluationPoint[] = [{ ply: 0, eval: 0.2 }].concat(
     moves.map((m) => ({
       ply: m.ply,
       eval: Math.max(-CLAMP, Math.min(CLAMP,
-        m.eval_mate != null ? (m.eval_mate > 0 ? CLAMP : -CLAMP) : m.eval_cp / 100)),
+        m.eval_mate != null ? (m.eval_mate > 0 ? CLAMP : -CLAMP) : m.eval_cp! / 100)),
       san: m.san,
     }))
   )
@@ -50,10 +64,14 @@ export default function EvalGraph({ moves, currentPly, currentMove, onSelect }) 
           <ReferenceLine y={0} stroke="#555" />
           <Tooltip
             contentStyle={{ background: '#1e2128', border: '1px solid #333845', fontSize: 12 }}
-            formatter={(v) => [(v > 0 ? '+' : '') + v.toFixed(1), 'eval']}
+            formatter={(value) => {
+              const evaluation = typeof value === 'number' ? value : Number(value)
+              return [(evaluation > 0 ? '+' : '') + evaluation.toFixed(1), 'eval']
+            }}
             labelFormatter={(ply) => {
-              const d = data.find((x) => x.ply === ply)
-              return d?.san ? `${Math.ceil(ply / 2)}${ply % 2 ? '.' : '…'} ${d.san}` : 'Start'
+              const numericPly = Number(ply)
+              const d = data.find((x) => x.ply === numericPly)
+              return d?.san ? `${Math.ceil(numericPly / 2)}${numericPly % 2 ? '.' : '…'} ${d.san}` : 'Start'
             }}
           />
           <Area type="monotone" dataKey="eval" stroke="#9aa2b1" fill="url(#evalFill)" isAnimationActive={false} />

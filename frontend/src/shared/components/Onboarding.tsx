@@ -1,7 +1,38 @@
+import type { ReactNode } from 'react'
+
 // First-run checklist. Reflects live setup state from /api/onboarding and checks
 // itself off as the user completes each step. Hidden once fully onboarded.
 
-function Step({ status, title, children }) {
+type StepStatus = 'done' | 'warn' | 'todo'
+
+export interface OnboardingData {
+  coach_provider?: string
+  claude_key_set?: boolean
+  gemini_key_set?: boolean
+  ollama_reachable?: boolean
+  ollama_model_present?: boolean
+  ollama_model?: string
+  chesscom_username?: string
+  games: number
+  engine_analyzed: number
+  coached: number
+  stockfish_found?: boolean
+  stockfish_path?: string
+  stockfish_error?: string
+}
+
+interface StepProps {
+  status: StepStatus
+  title: string
+  children?: ReactNode
+}
+
+interface OnboardingProps {
+  data: OnboardingData | null
+  onDismiss: () => void
+}
+
+function Step({ status, title, children }: StepProps) {
   const icon = status === 'done' ? '✓' : status === 'warn' ? '!' : '○'
   return (
     <li className={`ob-step ${status}`}>
@@ -14,7 +45,7 @@ function Step({ status, title, children }) {
   )
 }
 
-function engineStep(o) {
+function engineStep(o: OnboardingData): { status: StepStatus; node: ReactNode } {
   if (o.coach_provider === 'claude') {
     return o.claude_key_set
       ? { status: 'done', node: <>Claude API key is set.</> }
@@ -42,7 +73,7 @@ function engineStep(o) {
   return { status: 'done', node: <>Ollama is running with <code>{o.ollama_model}</code> ready.</> }
 }
 
-export default function Onboarding({ data, onDismiss }) {
+export default function Onboarding({ data, onDismiss }: OnboardingProps) {
   if (!data) return null
   const eng = engineStep(data)
   const hasUser = !!data.chesscom_username

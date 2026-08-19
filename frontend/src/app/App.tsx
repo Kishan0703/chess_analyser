@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import GameList from '../components/GameList.jsx'
-import GameView from '../components/GameView.jsx'
-import BotPlay from '../components/BotPlay.jsx'
-import Profile from '../components/Profile.jsx'
-import Settings from '../components/Settings.jsx'
-import ThemePicker from '../components/ThemePicker.jsx'
+import GameList from '../features/games/GameList'
+import GameView from '../features/games/GameView'
+import BotPlay from '../features/play/BotPlay'
+import Profile from '../features/profile/Profile'
+import Settings from '../features/settings/Settings'
+import ThemePicker from '../shared/components/ThemePicker'
 import { hashForView, viewFromLocation } from './routes'
 import type { AppView } from './routes'
 
@@ -84,15 +84,15 @@ export default function App() {
       <main className="shell-main">
         <div className="page">
           {view.name === 'list' && (
-            <GameList onOpen={(id: string) => navigate({ name: 'game', id })} />
+            <GameList onOpen={(id) => navigate({ name: 'game', id: String(id) })} />
           )}
           {view.name === 'game' && <GameView gameId={view.id} />}
           {view.name === 'profile' && (
-            <Profile onOpenGame={(id: string) => navigate({ name: 'game', id })} />
+            <Profile onOpenGame={(id) => navigate({ name: 'game', id: String(id) })} />
           )}
           {view.name === 'settings' && <Settings />}
           {view.name === 'play' && (
-            <BotPlay onOpenGame={(id: string) => navigate({ name: 'game', id })} />
+            <BotPlay onOpenGame={(id) => navigate({ name: 'game', id: String(id) })} />
           )}
         </div>
       </main>

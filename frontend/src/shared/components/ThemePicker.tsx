@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { getStoredTheme, applyTheme } from '../shared/theme'
+import { getStoredTheme, applyTheme } from '../theme'
+import type { ThemeId } from '../theme'
 
-const THEMES = [
+const THEMES: Array<{ id: ThemeId; name: string; bg: string; accent: string }> = [
   { id: 'classic', name: 'Classic', bg: '#f6f8f6', accent: '#3a8045' },
   { id: 'slate', name: 'Slate', bg: '#f2f5f2', accent: '#315f95' },
 ]
@@ -13,7 +14,7 @@ export default function ThemePicker() {
     applyTheme(theme)
   }, [theme])
 
-  const apply = (id) => {
+  const apply = (id: ThemeId) => {
     setTheme(id)
   }
 

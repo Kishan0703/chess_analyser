@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api } from '../api/chesscoach'
+import { api } from '../../api/chesscoach'
+import type { GameMove } from '../../types/api'
 
-const LABELS = {
+const LABELS: Record<string, string> = {
   brilliant: 'Brilliant',
   great: 'Great',
   best: 'Best',
@@ -11,7 +12,41 @@ const LABELS = {
   blunder: 'Blunder',
 }
 
-function evalText(candidate) {
+interface Candidate {
+  move: string
+  line: string
+  eval_mate?: number | null
+  eval_cp?: number | null
+  side_to_move_win_pct?: number | null
+}
+
+interface PositionData {
+  side_to_move?: string
+  candidates?: Candidate[]
+}
+
+interface Explanation {
+  explanation?: string
+  plan?: string
+}
+
+interface PositionAnalysisProps {
+  gameId: number | string
+  ply: number
+  analyzed: boolean
+  currentMove: GameMove | null
+  onVariation: (request: {
+    ply: number
+    bestLineSans: string[]
+    playedUci?: string | null
+    playedSan?: string
+    momentType: string
+  }) => void
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+function evalText(candidate?: Candidate) {
   if (!candidate) return '...'
   if (candidate.eval_mate != null) return `M${Math.abs(candidate.eval_mate)}`
   if (candidate.eval_cp == null) return '...'
@@ -19,10 +54,10 @@ function evalText(candidate) {
   return `${pawns >= 0 ? '+' : ''}${pawns.toFixed(2)}`
 }
 
-function verdictText(move) {
+function verdictText(move: GameMove | null) {
   if (!move) return 'Start position. No move has been played yet.'
-  const label = LABELS[move.classification] || 'Move'
-  if (['brilliant', 'great', 'best'].includes(move.classification)) {
+  const label = LABELS[move.classification ?? ''] || 'Move'
+  if (['brilliant', 'great', 'best'].includes(move.classification ?? '')) {
     return `${label}: ${move.san} matched the engine's main idea.`
   }
   if (move.classification === 'good') {
@@ -33,11 +68,11 @@ function verdictText(move) {
   return `${label}: ${move.san} gave away about ${loss}% win probability.${best}`
 }
 
-export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, onVariation }) {
-  const [cache, setCache] = useState({})
-  const [errors, setErrors] = useState({})
-  const [explanationCache, setExplanationCache] = useState({})
-  const [explanationErrors, setExplanationErrors] = useState({})
+export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, onVariation }: PositionAnalysisProps) {
+  const [cache, setCache] = useState<Record<number, PositionData>>({})
+  const [errors, setErrors] = useState<Record<number, string>>({})
+  const [explanationCache, setExplanationCache] = useState<Record<number, Explanation>>({})
+  const [explanationErrors, setExplanationErrors] = useState<Record<number, string>>({})
   const requestId = useRef(0)
   const explanationRequestId = useRef(0)
   const data = cache[ply]
@@ -51,14 +86,14 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
     if (errors[ply]) return
 
     const id = ++requestId.current
-    api.positionAnalysis(gameId, ply)
+    api.positionAnalysis(Number(gameId), ply)
       .then((result) => {
         if (requestId.current !== id) return
-        setCache((prev) => ({ ...prev, [ply]: result }))
+        setCache((prev) => ({ ...prev, [ply]: result as PositionData }))
       })
-      .catch((e) => {
+      .catch((error: unknown) => {
         if (requestId.current !== id) return
-        setErrors((prev) => ({ ...prev, [ply]: e.message }))
+        setErrors((prev) => ({ ...prev, [ply]: errorMessage(error) }))
       })
   }, [analyzed, cache, errors, gameId, ply])
 
@@ -69,14 +104,14 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
 
     const id = ++explanationRequestId.current
     const timer = setTimeout(() => {
-      api.positionExplanation(gameId, ply)
+      api.positionExplanation(Number(gameId), ply)
       .then((result) => {
         if (explanationRequestId.current !== id) return
-        setExplanationCache((prev) => ({ ...prev, [ply]: result }))
+        setExplanationCache((prev) => ({ ...prev, [ply]: result as Explanation }))
       })
-      .catch((e) => {
+      .catch((error: unknown) => {
         if (explanationRequestId.current !== id) return
-        setExplanationErrors((prev) => ({ ...prev, [ply]: e.message }))
+        setExplanationErrors((prev) => ({ ...prev, [ply]: errorMessage(error) }))
       })
     }, 180)
     return () => clearTimeout(timer)
@@ -88,7 +123,8 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
     [currentMove]
   )
   const canReplayBest = currentMove?.best_line && currentMove?.classification &&
-    !['brilliant', 'great', 'best'].includes(currentMove.classification)
+    !['brilliant', 'great', 'best'].includes(currentMove.classification ?? '')
+  const candidates = data?.candidates ?? []
 
   if (!analyzed) return null
 
@@ -102,7 +138,7 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
           </div>
         </div>
         <span className={`position-verdict ${verdictClass}`}>
-          {currentMove ? (LABELS[currentMove.classification] || currentMove.classification) : 'Start'}
+          {currentMove ? (LABELS[currentMove.classification ?? ''] || currentMove.classification) : 'Start'}
         </span>
       </div>
 
@@ -145,9 +181,9 @@ export default function PositionAnalysis({ gameId, ply, analyzed, currentMove, o
       </div>
       {!data && !error && <div className="status-line">Analyzing this position...</div>}
       {error && <div className="error">{error}</div>}
-      {data?.candidates?.length > 0 && (
+      {candidates.length > 0 && (
         <div className="candidate-list">
-          {data.candidates.map((candidate, i) => (
+          {candidates.map((candidate, i) => (
             <div className="candidate-row" key={`${candidate.move}-${i}`}>
               <div className="candidate-rank">{i + 1}</div>
               <div className="candidate-line">
