@@ -7,10 +7,10 @@ import Settings from './components/Settings.jsx'
 import ThemePicker from './components/ThemePicker.jsx'
 
 const NAV_ITEMS = [
-  { view: { name: 'list' }, id: 'list', icon: '01', label: 'Your games' },
-  { view: { name: 'profile' }, id: 'profile', icon: '02', label: 'Training profile' },
-  { view: { name: 'settings' }, id: 'settings', icon: '03', label: 'Settings' },
-  { view: { name: 'play' }, id: 'play', icon: '04', label: 'Play vs Bot' },
+  { view: { name: 'list' }, id: 'list', icon: '♟', label: 'Your games' },
+  { view: { name: 'profile' }, id: 'profile', icon: '↗', label: 'Training profile' },
+  { view: { name: 'settings' }, id: 'settings', icon: '⚙', label: 'Settings' },
+  { view: { name: 'play' }, id: 'play', icon: '▶', label: 'Play vs Bot' },
 ]
 
 function viewFromLocation() {

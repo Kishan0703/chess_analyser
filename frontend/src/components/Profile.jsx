@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '../api.js'
 
 function Stat({ label, value }) {
@@ -31,6 +30,10 @@ export default function Profile({ onOpenGame }) {
   }, [])
 
   const themeData = useMemo(() => (profile?.themes || []).slice(0, 8), [profile])
+  const maxThemeCount = useMemo(
+    () => Math.max(...themeData.map((theme) => theme.count), 1),
+    [themeData],
+  )
 
   if (error) return <div className="status-line error">{error}</div>
   if (!profile) {
@@ -101,17 +104,26 @@ export default function Profile({ onOpenGame }) {
             <div className="card profile-card">
               <h3>Top themes</h3>
               {themeData.length ? (
-                <div className="theme-chart">
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={themeData} layout="vertical" margin={{ left: 12, right: 12 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" allowDecimals={false} />
-                      <YAxis dataKey="slug" type="category" width={132} tick={{ fontSize: 12 }} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="var(--accent)" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <ol className="theme-rank-list" aria-label="Top recurring themes">
+                  {themeData.map((theme) => {
+                    const pct = Math.max(10, Math.round((theme.count / maxThemeCount) * 100))
+                    return (
+                      <li key={theme.slug} className="theme-rank-row">
+                        <div className="theme-rank-meta">
+                          <span className="theme-rank-name">{theme.slug}</span>
+                          <span className="theme-rank-count">{theme.count}</span>
+                        </div>
+                        <div
+                          className="theme-rank-track"
+                          role="img"
+                          aria-label={`${theme.slug}: ${theme.count}`}
+                        >
+                          <span className="theme-rank-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ol>
               ) : (
                 <p className="status-line">Generate coaching on analyzed games to collect themes.</p>
               )}

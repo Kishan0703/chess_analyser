@@ -55,8 +55,17 @@ export default function Settings() {
   }
 
   return (
-    <div className="settings-form">
-      <h2>Settings</h2>
+    <div className="settings-page">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">Configuration</p>
+          <h2>Settings</h2>
+          <p className="page-subtitle">Connect your account, coaching provider, and engine defaults.</p>
+        </div>
+      </div>
+
+      <div className="settings-form">
+        <div className="settings-section-title">Account</div>
 
       <label>
         chess.com username
@@ -80,7 +89,7 @@ export default function Settings() {
 
       {isOllama && (
         <>
-          <div className="card" style={{ padding: '10px 14px', fontSize: 13, lineHeight: 1.6 }}>
+          <div className="settings-help-card">
             <strong>Ollama setup (one time):</strong>
             <ol style={{ margin: '6px 0 0', paddingLeft: 18 }}>
               <li>Install from <strong>ollama.com</strong></li>
@@ -147,7 +156,8 @@ export default function Settings() {
         </>
       )}
 
-      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '4px 0' }} />
+      <hr />
+      <div className="settings-section-title">Engine</div>
 
       <label>
         Engine time per move (ms) — higher = more accurate, slower
@@ -181,9 +191,10 @@ export default function Settings() {
         </span>
       </label>
 
-      <div>
+      <div className="settings-actions">
         <button className="primary" onClick={save}>Save</button>
-        <span className="status-line" style={{ marginLeft: 10 }}>{status}</span>
+        <span className="status-line">{status}</span>
+      </div>
       </div>
     </div>
   )
