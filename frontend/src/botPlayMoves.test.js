@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildBotMovePayload, createBotDropHandler } from './botPlayMoves.js'
+import { buildBotMovePayload, createBotDropHandler } from './features/play/botPlayMoves.ts'
 
 test('builds server move payload from react-chessboard v5 drop args', () => {
   assert.deepEqual(

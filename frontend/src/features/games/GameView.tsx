@@ -1,0 +1,447 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Chess } from 'chess.js'
+import { Chessboard } from 'react-chessboard'
+import { api } from '../../api/chesscoach'
+import EvalGraph from '../analysis/EvalGraph'
+import MoveList from '../analysis/MoveList'
+import CoachPanel from '../analysis/CoachPanel'
+import InfoTip from '../../shared/components/InfoTip'
+import PositionAnalysis from '../analysis/PositionAnalysis'
+import GameChat from '../analysis/GameChat'
+import { formatTimeControl } from '../../shared/timeControl'
+import type { BestLineResponse, GameDetail, JobStatus } from '../../types/api'
+
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+
+// chess.com-style move-quality glyphs shown in the corner of the move's to-square
+const MOVE_GLYPH: Record<string, string> = {
+  brilliant: '‼',
+  great: '!',
+  best: '★',
+  good: '✓',
+  inaccuracy: '?!',
+  mistake: '?',
+  blunder: '??',
+}
+
+interface GameViewProps {
+  gameId: number | string
+}
+
+interface Variation {
+  fens: string[]
+  sans: string[]
+  step: number
+  playedUci?: string | null
+  playedSan?: string
+  playedFen: string | null
+  momentType: string
+}
+
+interface VariationRequest {
+  ply: number
+  baseFen?: string
+  bestLineSans?: string[]
+  playedUci?: string | null
+  playedSan?: string
+  momentType?: string
+}
+
+interface Arrow {
+  startSquare: string
+  endSquare: string
+  color: string
+}
+
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+export default function GameView({ gameId }: GameViewProps) {
+  const [game, setGame] = useState<GameDetail | null>(null)
+  const [ply, setPly] = useState(0)
+  const [engineStatus, setEngineStatus] = useState<JobStatus | null>(null)
+  const [coachBusy, setCoachBusy] = useState(false)
+  const [coachProgress, setCoachProgress] = useState<Pick<JobStatus, 'done' | 'total' | 'label'> | null>(null)
+  const [error, setError] = useState('')
+  // variation: null | { fens, sans, step } — best-line walkthrough
+  const [variation, setVariation] = useState<Variation | null>(null)
+  const [variationLoading, setVariationLoading] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const coachPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  const [boardPx, setBoardPx] = useState(0)
+
+  // measure the board container so the board fills it exactly (fixes row-gap rendering bug)
+  useEffect(() => {
+    if (!boardRef.current) return
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) setBoardPx(entry.contentRect.width)
+    })
+    ro.observe(boardRef.current)
+    return () => ro.disconnect()
+  }, [])
+
+  const load = useCallback(() => {
+    api.game(Number(gameId)).then((g) => {
+      setGame(g)
+      setPly(g.moves.length ? g.moves.length : 0)
+      setVariation(null)
+    }).catch((error: unknown) => setError(errorMessage(error)))
+  }, [gameId])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (coachPollRef.current) clearInterval(coachPollRef.current)
+  }, [])
+
+  const moves = useMemo(() => game?.moves ?? [], [game])
+  const maxPly = moves.length
+
+  // keyboard navigation — arrow keys step through variation or game
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setVariation(null); return }
+      if (variation) {
+        if (e.key === 'ArrowRight')
+          setVariation((v) => v && v.step < v.sans.length ? { ...v, step: v.step + 1 } : v)
+        if (e.key === 'ArrowLeft')
+          setVariation((v) => v && v.step > 0 ? { ...v, step: v.step - 1 } : v)
+        return
+      }
+      if (e.key === 'ArrowLeft') setPly((p) => Math.max(0, p - 1))
+      if (e.key === 'ArrowRight') setPly((p) => Math.min(maxPly, p + 1))
+      if (e.key === 'Home') setPly(0)
+      if (e.key === 'End') setPly(maxPly)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [maxPly, variation])
+
+  // enter variation: fetch the full Stockfish PV for the position before `ply`,
+  // then let the user step through it. Falls back to stored best_line on error.
+  const enterVariation = useCallback(async ({ ply, baseFen, bestLineSans, playedUci, playedSan, momentType }: VariationRequest) => {
+    setVariationLoading(true)
+    let fen = baseFen || (ply <= 1 ? START_FEN : moves[ply - 2]?.fen_after) || START_FEN
+    let sans = bestLineSans || []
+    try {
+      const result: BestLineResponse = await api.bestLine(Number(gameId), ply)
+      fen = result.fen
+      sans = result.sans
+    } catch {
+      // keep stored line as fallback
+    } finally {
+      setVariationLoading(false)
+    }
+    const chess = new Chess(fen)
+    const fens = [fen]
+    const validSans: string[] = []
+    for (const san of sans) {
+      try { chess.move(san); fens.push(chess.fen()); validSans.push(san) }
+      catch { break }
+    }
+    // Compute the position that actually occurred (the move the student played),
+    // so step 0 can contrast "what you played" with "the best move".
+    let playedFen = null
+    if (playedUci) {
+      try {
+        const pc = new Chess(fen)
+        pc.move({ from: playedUci.slice(0, 2), to: playedUci.slice(2, 4), promotion: (playedUci.slice(4) || undefined) as 'b' | 'n' | 'q' | 'r' | undefined })
+        playedFen = pc.fen()
+      } catch { /* ignore */ }
+    }
+    if (validSans.length > 0) {
+      setVariation({
+        fens, sans: validSans, step: 0,
+        playedUci, playedSan, playedFen,
+        momentType: momentType || 'negative',
+      })
+    }
+  }, [gameId, moves])
+
+  const startAnalysis = async () => {
+    setError('')
+    try {
+      await api.analyze(Number(gameId))
+      setEngineStatus({ status: 'running', done: 0, total: 1 })
+      pollRef.current = setInterval(async () => {
+        const s = await api.analyzeStatus(Number(gameId)).catch(() => null)
+        if (!s) return
+        setEngineStatus(s)
+        if (s.status === 'done' || s.status === 'error') {
+          if (pollRef.current) clearInterval(pollRef.current)
+          if (s.status === 'done') load()
+          if (s.status === 'error') setError(s.error ?? 'Engine analysis failed.')
+        }
+      }, 1000)
+    } catch (error) { setError(errorMessage(error)) }
+  }
+
+  const startCoach = async () => {
+    setError('')
+    setCoachBusy(true)
+    setCoachProgress({ done: 0, total: 1, label: 'Starting…' })
+    try {
+      await api.coach(Number(gameId))
+      coachPollRef.current = setInterval(async () => {
+        const s = await api.coachStatus(Number(gameId)).catch(() => null)
+        if (!s) return
+        if (s.status === 'running') {
+          setCoachProgress({ done: s.done, total: s.total, label: s.label })
+        } else if (s.status === 'done' || s.status === 'error') {
+          if (coachPollRef.current) clearInterval(coachPollRef.current)
+          setCoachBusy(false)
+          setCoachProgress(null)
+          if (s.status === 'done') load()
+          if (s.status === 'error') setError(s.error ?? 'Coaching failed.')
+        }
+      }, 1200)
+    } catch (error) {
+      setError(errorMessage(error))
+      setCoachBusy(false)
+      setCoachProgress(null)
+    }
+  }
+
+  if (!game) {
+    if (error) return <div className="status-line error">{error}</div>
+    return (
+      <div className="game-layout">
+        <div className="board-col">
+          <div className="skeleton skeleton-board" />
+          <div className="skeleton" style={{ height: 34, borderRadius: 6 }} />
+        </div>
+        <div className="side-col">
+          <div className="skeleton" style={{ height: 92, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 220, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 160, borderRadius: 8 }} />
+        </div>
+      </div>
+    )
+  }
+
+  // current FEN: variation takes priority over game position
+  const gameFen = ply === 0 ? START_FEN : moves[ply - 1].fen_after
+  const fen = variation ? variation.fens[variation.step] : gameFen
+
+  const currentMove = ply > 0 ? moves[ply - 1] : null
+  const nextMove = ply < maxPly ? moves[ply] : null
+  const orientation = game.user_color === 'black' ? 'black' : 'white'
+  const analyzed = game.engine_analyzed && moves.length > 0
+  const engineRunning = engineStatus?.status === 'running'
+
+  // arrows: in variation show the next move in the best line; otherwise show best move on errors
+  const arrows: Arrow[] = []
+  if (variation) {
+    if (variation.step < variation.sans.length) {
+      const chess = new Chess(variation.fens[variation.step])
+      try {
+        const m = chess.move(variation.sans[variation.step])
+        if (m) arrows.push({ startSquare: m.from, endSquare: m.to, color: '#4caf7d' })
+      } catch { /* ignore */ }
+    }
+    // At the decision point (step 0) of a mistake, also show the move actually
+    // played in red so the contrast with the best move (green) is explicit.
+    if (variation.step === 0 && variation.momentType === 'negative' && variation.playedUci) {
+      const from = variation.playedUci.slice(0, 2)
+      const to = variation.playedUci.slice(2, 4)
+      // only draw if it differs from the best move already shown in green
+      if (!arrows.some((a) => a.startSquare === from && a.endSquare === to)) {
+        arrows.push({ startSquare: from, endSquare: to, color: '#e05d5d' })
+      }
+    }
+  } else if (nextMove?.best_uci &&
+      ['inaccuracy', 'mistake', 'blunder'].includes(nextMove.classification ?? '')) {
+    arrows.push({
+      startSquare: nextMove.best_uci.slice(0, 2),
+      endSquare: nextMove.best_uci.slice(2, 4),
+      color: '#4caf7d',
+    })
+  }
+
+  // move-quality badge on the to-square of the move just played (not in variation)
+  let badge = null
+  if (!variation && analyzed && boardPx > 0 && currentMove?.uci && MOVE_GLYPH[currentMove.classification ?? '']) {
+    const sq = boardPx / 8
+    const f = currentMove.uci.charCodeAt(2) - 97   // 'a'..'h' -> 0..7
+    const r = currentMove.uci.charCodeAt(3) - 49   // '1'..'8' -> 0..7
+    const x = orientation === 'white' ? f * sq : (7 - f) * sq
+    const y = orientation === 'white' ? (7 - r) * sq : r * sq
+    const size = Math.max(15, sq * 0.42)
+    badge = {
+      glyph: MOVE_GLYPH[currentMove.classification ?? ''],
+      cls: currentMove.classification,
+      left: x + sq * 0.80 - size / 2,
+      top: y + sq * 0.20 - size / 2,
+      size,
+    }
+  }
+
+  return (
+    <div className="game-layout">
+      <div className="board-col">
+        {variationLoading && (
+          <div className="variation-banner">
+            <span>Fetching deep line from Stockfish…</span>
+          </div>
+        )}
+        {variation && !variationLoading && (
+          <div className={`variation-banner ${variation.momentType === 'positive' ? 'positive' : ''}`}>
+            <span>
+              {variation.step === 0 && variation.momentType === 'negative' && variation.playedSan ? (
+                <>
+                  You played <span className="played-move">{variation.playedSan}</span> (red).
+                  {' '}Best was <strong>{variation.sans[0]}</strong> (green) →
+                </>
+              ) : variation.momentType === 'positive' ? (
+                <>Your move was best. Line continues: <strong>{variation.sans.join(' ')}</strong> · {variation.step}/{variation.sans.length}</>
+              ) : (
+                <>Best line: <strong>{variation.sans.join(' ')}</strong> · move {variation.step}/{variation.sans.length}</>
+              )}
+            </span>
+            <button onClick={() => setVariation(null)}>✕ Exit</button>
+          </div>
+        )}
+        <div className="board-shell">
+          <div ref={boardRef} className="board-stage">
+            <Chessboard
+              options={{
+                position: fen,
+                boardOrientation: orientation,
+                allowDragging: false,
+                arrows,
+                boardStyle: { width: '100%', height: '100%' },
+                id: 'main-board',
+              }}
+            />
+            {badge && (
+              <div
+                className={`move-badge ${badge.cls}`}
+                style={{
+                  left: badge.left, top: badge.top,
+                  width: badge.size, height: badge.size,
+                  fontSize: badge.size * 0.5,
+                }}
+              >
+                {badge.glyph}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="board-nav">
+          {variation ? (
+            <>
+              <button onClick={() => setVariation((v) => v ? { ...v, step: 0 } : v)}>⏮</button>
+              <button onClick={() => setVariation((v) => v && v.step > 0 ? { ...v, step: v.step - 1 } : v)}>◀</button>
+              <button onClick={() => setVariation((v) => v && v.step < v.sans.length ? { ...v, step: v.step + 1 } : v)}>▶</button>
+              <button onClick={() => setVariation((v) => v ? { ...v, step: v.sans.length } : v)}>⏭</button>
+              <button onClick={() => setVariation(null)} style={{ marginLeft: 8 }}>✕ Exit</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setPly(0)} title="First move (Home)">⏮</button>
+              <button onClick={() => setPly(Math.max(0, ply - 1))} title="Previous move (←)">◀</button>
+              <button onClick={() => setPly(Math.min(maxPly, ply + 1))} title="Next move (→)">▶</button>
+              <button onClick={() => setPly(maxPly)} title="Last move (End)">⏭</button>
+            </>
+          )}
+        </div>
+        {analyzed && (
+          <EvalGraph
+            moves={moves}
+            currentPly={ply}
+            currentMove={currentMove}
+            onSelect={(p) => { setVariation(null); setPly(p) }}
+          />
+        )}
+      </div>
+
+      <div className="side-col">
+        <div className="card game-summary-card">
+          <h3>
+            {game.white} {game.white_elo ? `(${game.white_elo})` : ''} vs{' '}
+            {game.black} {game.black_elo ? `(${game.black_elo})` : ''} · {game.result}
+          </h3>
+          <div className="status-line">
+            {game.opening || game.eco} · {formatTimeControl(game.time_control)} · {(game.played_at || '').slice(0, 10)}
+          </div>
+          <div className="action-row">
+            <button
+              className="primary" onClick={startAnalysis} disabled={engineRunning}
+              title="Runs Stockfish on every move: the eval graph and move grades (★ best … ?? blunder). Takes ~10–30s. Required before coaching."
+            >
+              {engineRunning
+                ? `Analyzing… ${engineStatus.done}/${engineStatus.total}`
+                : analyzed ? 'Re-run engine' : 'Run engine analysis'}
+            </button>
+            <button
+              className="secondary-action" onClick={startCoach} disabled={!analyzed || coachBusy}
+              title="Generates the positional report — one focused pass per key moment, then a game summary. Takes ~1–3 min."
+            >
+              {coachBusy ? 'Coach is thinking…' : game.coach ? 'Re-coach' : 'Get coaching'}
+            </button>
+            {!analyzed && (
+              <InfoTip side="left">Start with <strong>Run engine analysis</strong> — coaching unlocks once a game is analyzed.</InfoTip>
+            )}
+          </div>
+          {coachBusy && coachProgress && (
+            <div className="coach-progress">
+              <div className="coach-progress-label">
+                {coachProgress.label} ({Math.min(coachProgress.done ?? 0, coachProgress.total ?? 1)}/{coachProgress.total ?? 1})
+              </div>
+              <div className="progress-track">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${Math.round(100 * (coachProgress.done ?? 0) / Math.max(1, coachProgress.total ?? 1))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
+        </div>
+
+        {analyzed && (
+          <PositionAnalysis
+            gameId={gameId}
+            ply={ply}
+            analyzed={analyzed}
+            currentMove={currentMove}
+            onVariation={enterVariation}
+          />
+        )}
+
+        {analyzed && (
+          <div className="card move-list-card">
+            <h3>
+              Moves{' '}
+              <InfoTip>
+                Move grades: <strong>‼ brilliant</strong> (sound sacrifice) ·
+                {' '}<strong>! great</strong> (best under pressure) · <strong>★ best</strong> ·
+                {' '}<strong>✓ good</strong> · <strong>?! inaccuracy</strong> ·
+                {' '}<strong>? mistake</strong> · <strong>?? blunder</strong>.
+              </InfoTip>
+            </h3>
+            <MoveList moves={moves} currentPly={ply} onSelect={(p) => { setVariation(null); setPly(p) }} />
+          </div>
+        )}
+
+        <CoachPanel
+          coach={game.coach}
+          themes={game.themes}
+          moves={moves}
+          onJump={(p) => { setVariation(null); setPly(p) }}
+          onVariation={enterVariation}
+        />
+
+        {analyzed && (
+          <GameChat
+            key={gameId}
+            gameId={gameId}
+            ply={ply}
+            analyzed={analyzed}
+            currentMove={currentMove}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
