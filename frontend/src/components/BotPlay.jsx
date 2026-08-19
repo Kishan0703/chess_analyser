@@ -11,6 +11,14 @@ const PRESETS = {
   master: { label: 'Master', skill_level: 18, move_time_ms: 900, randomness: 0 },
 }
 
+const DIFFICULTY_HINTS = {
+  beginner: 'Forgiving',
+  casual: 'Light practice',
+  club: 'Balanced',
+  strong: 'Sharper play',
+  master: 'Low randomness',
+}
+
 function movesFromPgn(pgn) {
   const sans = pgn
     .replace(/\[[^\]]*\]\s*/g, '')
@@ -142,6 +150,10 @@ export default function BotPlay({ onOpenGame }) {
       {!session ? (
         <div className="bot-setup">
           <div className="bot-controls card">
+          <div className="bot-setup-head">
+            <h2>New game</h2>
+            <span>{PRESETS[difficulty].label} · {advanced.move_time_ms} ms/move</span>
+          </div>
           <div className="bot-control-group">
             <h3>Play as</h3>
             <div className="bot-choice-row" role="group" aria-label="Player color">
@@ -153,7 +165,7 @@ export default function BotPlay({ onOpenGame }) {
                   key={color}
                   onClick={() => setPlayerColor(color)}
                 >
-                  {color[0].toUpperCase() + color.slice(1)}
+                  <span className="choice-title">{color[0].toUpperCase() + color.slice(1)}</span>
                 </button>
               ))}
             </div>
@@ -170,7 +182,8 @@ export default function BotPlay({ onOpenGame }) {
                   key={key}
                   onClick={() => selectDifficulty(key)}
                 >
-                  {preset.label}
+                  <span className="choice-title">{preset.label}</span>
+                  <span className="choice-hint">{DIFFICULTY_HINTS[key]}</span>
                 </button>
               ))}
             </div>
